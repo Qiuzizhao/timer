@@ -21,6 +21,7 @@
       }
     },
     "android": {
+      "package": "com.qiuzizhao.timer",
       "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
