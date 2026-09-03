@@ -1,0 +1,33 @@
+# --- React Native / Expo ---
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# --- Native build output (CNG: regenerate with `npx expo prebuild`) ---
+ios/
+android/
+*.orig.*
+# If you switch to a bare workflow and want to commit the native folder,
+# remove the `ios/`/`android/` lines above and keep the platform-specific
+# ignores from the generated `ios/.gitignore` / `android/.gitignore` instead.
+
+# --- Local test artifacts ---
+.tmp/
+tmp/
+.npm-cache/
+
+# --- macOS ---
+.DS_Store
+
+# --- Logs / debug ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# --- Xcode (native folder, if you ever commit it) ---
+xcuserdata/
+DerivedData/
+*.ipa

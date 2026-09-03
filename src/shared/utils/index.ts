@@ -1,0 +1,1 @@
+export { colorWithAlpha } from './color';
