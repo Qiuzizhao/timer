@@ -25,7 +25,7 @@
       "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
-        "foregroundImage": "./assets/images/timer-app-icon-20260625.png"
+        "foregroundImage": "./assets/images/timer-app-icon-android-foreground.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
