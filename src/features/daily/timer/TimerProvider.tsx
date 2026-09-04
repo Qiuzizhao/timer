@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import { DEFAULT_TIMER_SOUND_ENABLED, getTimerActionSoundCue, shouldPlayTimerTick, type TimerActionSound, type TimerSoundCue } from './sound';
 import { createTimerStartSnapshot } from './time';
 import { cancelEndNotification, configureNotificationHandling, END_NOTIFICATION_DELAY_MS, ensureNotificationPermissions, scheduleEndNotification } from './notifications';
+import { addMinuteTimerForeground, startTimerForeground, stopTimerForeground, updateTimerForeground } from './foreground';
 
 export const minutePresets = [5, 10, 25, 40];
 export const minuteMs = 60 * 1000;
@@ -94,6 +95,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
   const playTimerSound = useCallback((cue: TimerSoundCue) => {
     if (!soundEnabled) return;
+    // On Android the foreground service owns the audio so it keeps playing in
+    // the background; only iOS/web play through expo-audio here.
+    if (Platform.OS === 'android') return;
     const player = cue === 'tick'
       ? tickPlayer
       : cue === 'ring'
@@ -144,6 +148,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         playActionSound('finish');
       }
       setRunning(false);
+      stopTimerForeground();
       triggerHaptic('notificationSuccess');
       // A live app rings itself; drop the delayed safety-net notification so
       // it never double-fires.
@@ -189,13 +194,15 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setNow(snapshot.nowMs);
     setRemainingMs(snapshot.remainingMs);
     setRunning(true);
+    startTimerForeground(snapshot.endsAtMs, soundEnabled);
     scheduleEndNotifier(new Date(snapshot.endsAtMs));
-  }, [playActionSound, remainingMs, scheduleEndNotifier, totalMs, triggerHaptic]);
+  }, [playActionSound, remainingMs, scheduleEndNotifier, soundEnabled, totalMs, triggerHaptic]);
 
   const pause = useCallback(() => {
     triggerHaptic('light');
     if (endsAt) setRemainingMs(Math.max(endsAt.getTime() - Date.now(), 0));
     setRunning(false);
+    stopTimerForeground();
     void cancelEndNotification();
   }, [endsAt, triggerHaptic]);
 
@@ -206,6 +213,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setRemainingMs(totalMs);
     setStartedAt(null);
     setEndsAt(null);
+    stopTimerForeground();
     void cancelEndNotification();
   }, [totalMs, triggerHaptic]);
 
@@ -216,16 +224,23 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       const nextEnd = new Date(endsAt.getTime() + minuteMs);
       setEndsAt(nextEnd);
       setRemainingMs(Math.max(nextEnd.getTime() - Date.now(), 0));
+      addMinuteTimerForeground(nextEnd.getTime(), soundEnabled);
       scheduleEndNotifier(nextEnd);
       return;
     }
     setRemainingMs((value) => value + minuteMs);
-  }, [endsAt, playActionSound, running, scheduleEndNotifier, triggerHaptic]);
+  }, [endsAt, playActionSound, running, scheduleEndNotifier, soundEnabled, triggerHaptic]);
 
   const toggleSound = useCallback(() => {
     triggerHaptic('light');
-    setSoundEnabled((enabled) => !enabled);
-  }, [triggerHaptic]);
+    setSoundEnabled((enabled) => {
+      const next = !enabled;
+      if (Platform.OS === 'android' && running && endsAt) {
+        updateTimerForeground(endsAt.getTime(), next);
+      }
+      return next;
+    });
+  }, [endsAt, running, triggerHaptic]);
 
   const value = useMemo<TimerContextValue>(() => ({
     durationInput,
