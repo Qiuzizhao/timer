@@ -11,6 +11,12 @@ import { addMinuteTimerForeground, startTimerForeground, stopTimerForeground, up
 export const minutePresets = [5, 10, 25, 40];
 export const minuteMs = 60 * 1000;
 
+/**
+ * How long the audio session stays alive after the finish ring starts, so the
+ * release never cuts the ring off mid-playback.
+ */
+const RING_RELEASE_DELAY_MS = 2000;
+
 type TimerContextValue = {
   durationInput: string;
   remainingMs: number;
@@ -43,13 +49,18 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const addMinuteVoicePlayer = useAudioPlayer(require('../../../../assets/sounds/timer-add-minute-voice.wav'), { downloadFirst: true, keepAudioSessionActive: true });
   const previousDisplayedSecondsRef = useRef<number | null>(Math.ceil(remainingMs / 1000));
   const finishSoundPlayedRef = useRef(false);
+  const runningRef = useRef(false);
+  const backgroundAudioRef = useRef(false);
+  const releaseBackgroundAudioTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const activateAudioSession = useCallback(async () => {
+  const configureAudioMode = useCallback(async (background: boolean) => {
+    // Flip the ref synchronously so overlapping callers share one intent.
+    backgroundAudioRef.current = background;
     try {
       await setAudioModeAsync({
         interruptionMode: 'mixWithOthers',
         playsInSilentMode: true,
-        shouldPlayInBackground: true,
+        shouldPlayInBackground: background,
       });
     } catch {
       await setAudioModeAsync({
@@ -57,8 +68,42 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         playsInSilentMode: true,
       }).catch(() => undefined);
     }
-    await setIsAudioActiveAsync(true).catch(() => undefined);
   }, []);
+
+  /**
+   * Claim the audio background capability. Only ever called while an audible
+   * countdown is running, so the declared `UIBackgroundModes: audio` always
+   * matches real, audible output (App Review guideline 2.5.4).
+   */
+  const activateBackgroundAudio = useCallback(async () => {
+    await configureAudioMode(true);
+    await setIsAudioActiveAsync(true).catch(() => undefined);
+  }, [configureAudioMode]);
+
+  /**
+   * Hand the background capability back once nothing is audible, so the app
+   * never sits on the audio background mode in silence.
+   */
+  const releaseBackgroundAudio = useCallback(async () => {
+    await configureAudioMode(false);
+    await setIsAudioActiveAsync(false).catch(() => undefined);
+  }, [configureAudioMode]);
+
+  /** Make sure a one-shot sound can actually be heard right now. */
+  const ensureAudioSessionActive = useCallback(async () => {
+    await configureAudioMode(backgroundAudioRef.current);
+    await setIsAudioActiveAsync(true).catch(() => undefined);
+  }, [configureAudioMode]);
+
+  /** Release after the finish ring, unless a new countdown already started. */
+  const scheduleBackgroundAudioRelease = useCallback((delayMs: number) => {
+    if (releaseBackgroundAudioTimerRef.current) clearTimeout(releaseBackgroundAudioTimerRef.current);
+    releaseBackgroundAudioTimerRef.current = setTimeout(() => {
+      releaseBackgroundAudioTimerRef.current = null;
+      if (runningRef.current) return;
+      void releaseBackgroundAudio();
+    }, delayMs);
+  }, [releaseBackgroundAudio]);
 
   const scheduleEndNotifier = useCallback((endsAt: Date) => {
     void (async () => {
@@ -70,9 +115,15 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    void activateAudioSession();
+    // Configure, but do not activate, the audio session at launch: the app must
+    // not hold the background audio capability while nothing is audible.
+    void configureAudioMode(false);
     configureNotificationHandling();
-  }, [activateAudioSession]);
+  }, [configureAudioMode]);
+
+  useEffect(() => {
+    runningRef.current = running;
+  }, [running]);
 
   useEffect(() => {
     promptPlayer.muted = false;
@@ -108,7 +159,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     player.muted = false;
     player.volume = 1;
     const play = async () => {
-      await activateAudioSession();
+      await ensureAudioSessionActive();
       try {
         await player.seekTo(0);
         player.play();
@@ -125,7 +176,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         }
       }, 120);
     });
-  }, [activateAudioSession, addMinuteVoicePlayer, promptPlayer, ringPlayer, soundEnabled, tickPlayer]);
+  }, [addMinuteVoicePlayer, ensureAudioSessionActive, promptPlayer, ringPlayer, soundEnabled, tickPlayer]);
 
   const playActionSound = useCallback((action: TimerActionSound) => {
     const cue = getTimerActionSoundCue(soundEnabled, action);
@@ -153,8 +204,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       // A live app rings itself; drop the delayed safety-net notification so
       // it never double-fires.
       void cancelEndNotification();
+      // The ring is audible content, so the capability is released after it.
+      scheduleBackgroundAudioRelease(RING_RELEASE_DELAY_MS);
     }
-  }, [endsAt, now, playActionSound, running, triggerHaptic]);
+  }, [endsAt, now, playActionSound, running, scheduleBackgroundAudioRelease, triggerHaptic]);
 
   const totalMs = useMemo(() => {
     const minutes = Number(durationInput);
@@ -186,6 +239,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     triggerHaptic('medium');
     finishSoundPlayedRef.current = false;
     previousDisplayedSecondsRef.current = Math.ceil(base / 1000);
+    if (releaseBackgroundAudioTimerRef.current) {
+      clearTimeout(releaseBackgroundAudioTimerRef.current);
+      releaseBackgroundAudioTimerRef.current = null;
+    }
+    // Audible countdowns hold the audio background capability; a muted timer
+    // stays foreground-only and leans on the scheduled notification instead.
+    if (soundEnabled) void activateBackgroundAudio();
     playActionSound('start');
     const snapshot = createTimerStartSnapshot(base);
     const startDate = new Date(snapshot.startedAtMs);
@@ -196,15 +256,16 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setRunning(true);
     startTimerForeground(snapshot.endsAtMs, soundEnabled);
     scheduleEndNotifier(new Date(snapshot.endsAtMs));
-  }, [playActionSound, remainingMs, scheduleEndNotifier, soundEnabled, totalMs, triggerHaptic]);
+  }, [activateBackgroundAudio, playActionSound, remainingMs, scheduleEndNotifier, soundEnabled, totalMs, triggerHaptic]);
 
   const pause = useCallback(() => {
     triggerHaptic('light');
     if (endsAt) setRemainingMs(Math.max(endsAt.getTime() - Date.now(), 0));
     setRunning(false);
     stopTimerForeground();
+    void releaseBackgroundAudio();
     void cancelEndNotification();
-  }, [endsAt, triggerHaptic]);
+  }, [endsAt, releaseBackgroundAudio, triggerHaptic]);
 
   const reset = useCallback(() => {
     triggerHaptic('heavy');
@@ -214,8 +275,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setStartedAt(null);
     setEndsAt(null);
     stopTimerForeground();
+    void releaseBackgroundAudio();
     void cancelEndNotification();
-  }, [totalMs, triggerHaptic]);
+  }, [releaseBackgroundAudio, totalMs, triggerHaptic]);
 
   const addMinute = useCallback(() => {
     triggerHaptic('light');
@@ -233,14 +295,17 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
   const toggleSound = useCallback(() => {
     triggerHaptic('light');
-    setSoundEnabled((enabled) => {
-      const next = !enabled;
-      if (Platform.OS === 'android' && running && endsAt) {
-        updateTimerForeground(endsAt.getTime(), next);
-      }
-      return next;
-    });
-  }, [endsAt, running, triggerHaptic]);
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    if (Platform.OS === 'android' && running && endsAt) {
+      updateTimerForeground(endsAt.getTime(), next);
+    }
+    if (Platform.OS !== 'android' && running) {
+      // iOS/web: the capability must mirror whether the countdown is audible.
+      if (next) void activateBackgroundAudio();
+      else void releaseBackgroundAudio();
+    }
+  }, [activateBackgroundAudio, endsAt, releaseBackgroundAudio, running, soundEnabled, triggerHaptic]);
 
   const value = useMemo<TimerContextValue>(() => ({
     durationInput,

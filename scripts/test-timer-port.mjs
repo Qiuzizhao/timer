@@ -27,8 +27,13 @@ assert.match(provider, /useState\('5'\)/, 'default duration input should be 5 mi
 assert.match(provider, /useState\(5 \* minuteMs\)/, 'default remaining time should be 5 minutes');
 assert.match(provider, /useAudioPlayer\(require\('\.\.\/\.\.\/\.\.\/\.\.\/assets\/sounds\/timer-prompt\.wav'\)/, 'prompt audio path should match copied SMAPP structure');
 assert.match(provider, /downloadFirst: true, keepAudioSessionActive: true/, 'timer sounds should be preloaded and keep the audio session active');
-assert.match(provider, /await activateAudioSession\(\);[\s\S]*player\.play\(\)/, 'timer should activate audio before playback');
-assert.match(provider, /shouldPlayInBackground:\s*true/, 'audio mode should request background playback');
+assert.match(provider, /await ensureAudioSessionActive\(\);[\s\S]*player\.play\(\)/, 'timer should activate audio before playback');
+assert.match(provider, /shouldPlayInBackground:\s*background/, 'audio mode should take the background flag from its caller');
+assert.match(provider, /void configureAudioMode\(false\);\n\s*configureNotificationHandling\(\)/, 'launch should configure the audio session without activating it');
+assert.match(provider, /if \(soundEnabled\) void activateBackgroundAudio\(\);/, 'only an audible countdown should claim the background audio capability');
+assert.match(provider, /void releaseBackgroundAudio\(\);/, 'pause and reset should hand the background audio capability back');
+assert.match(provider, /scheduleBackgroundAudioRelease\(RING_RELEASE_DELAY_MS\)/, 'the finish ring should release background audio once it has played');
+assert.match(provider, /if \(Platform\.OS !== 'android' && running\) \{/, 'toggling sound mid-countdown should follow the audio capability');
 assert.match(appConfig, /"UIBackgroundModes":\s*\[\s*"audio"\s*\]/, 'iOS config should enable background audio');
 assert.equal(packageJson.dependencies['@react-native-async-storage/async-storage'], '^2.2.0', 'native builds should include AsyncStorage because Expo/React Native startup expects the native module');
 assert.equal(packageJson.dependencies['expo-asset'], '~12.0.13', 'native builds should include expo-asset for bundled images and splash assets');
