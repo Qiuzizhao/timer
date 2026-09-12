@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "buildNumber": "6",
+      "buildNumber": "7",
       "bundleIdentifier": "com.qiuzizhao.timer",
       "supportsTablet": true,
       "infoPlist": {
@@ -22,7 +22,7 @@
     },
     "android": {
       "package": "com.qiuzizhao.timer",
-      "versionCode": 6,
+      "versionCode": 7,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/timer-app-icon-android-foreground.png"
