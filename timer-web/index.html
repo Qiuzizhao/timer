@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>德育计时器</title>
+<style>
+  :root {
+    --bg: #F8F9FA;
+    --surface: #FFFFFF;
+    --surface-muted: #F1F3F5;
+    --text: #1A1A1A;
+    --text-soft: #495057;
+    --muted: #868E96;
+    --border: #E9ECEF;
+    --primary: #B8860B;
+    --primary-dark: #936D09;
+    --primary-soft: #FFF9E6;
+    --danger: #E03131;
+    --success: #2F9E44;
+    --cast-bg: #0E1116;
+    --cast-surface: #1A1F28;
+    --cast-text: #F5F7FA;
+    --cast-muted: #9AA4B2;
+    --shadow: 0 6px 22px rgba(0,0,0,.06);
+    --radius: 18px;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    color: var(--text);
+    background: var(--bg);
+  }
+
+  body { display: flex; flex-direction: column; overflow: hidden; }
+
+  button {
+    font-family: inherit; cursor: pointer; border: none; background: none;
+    touch-action: manipulation; -webkit-user-select: none; user-select: none;
+  }
+
+  /* ---------------- App bar ---------------- */
+  .appbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 5;
+  }
+  .appbar .brand { font-size: 18px; font-weight: 800; letter-spacing: .5px; color: var(--primary); }
+  .appbar .spacer { flex: 1; }
+
+  .icon-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 48px;
+    padding: 0 18px;
+    border-radius: 12px;
+    background: var(--surface-muted);
+    color: var(--text-soft);
+    font-size: 14px;
+    font-weight: 700;
+    transition: transform .08s ease, background .2s ease, color .2s ease;
+  }
+  .icon-btn:hover { background: #E5E7EB; }
+  .icon-btn:active { transform: scale(.96); }
+  .icon-btn.primary { background: var(--primary); color: #fff; }
+  .icon-btn.primary:hover { background: var(--primary-dark); }
+  .icon-btn .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+
+  /* ---------------- Normal mode ---------------- */
+  .normal-view {
+    flex: 1;
+    display: flex;
+    padding: 24px 20px;
+    overflow: auto;
+  }
+  .normal-card {
+    width: 100%;
+    max-width: 440px;
+    margin: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 22px;
+  }
+
+  .sound-toggle-row { width: 100%; display: flex; justify-content: flex-end; margin-bottom: -4px; }
+  .round-icon {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 24px;
+  }
+  .round-icon.on { background: var(--primary); color: #fff; }
+
+  .dial {
+    position: relative;
+    width: 280px; height: 280px;
+    flex-shrink: 0;
+    cursor: pointer;
+  }
+  .dial:active { transform: scale(.985); }
+  .dial-hint {
+    position: absolute; bottom: 26px; left: 0; right: 0; text-align: center;
+    color: var(--muted); font-size: 13px; font-weight: 800;
+    letter-spacing: .5px; opacity: .55; transition: opacity .2s ease, color .2s ease;
+    pointer-events: none;
+  }
+  .dial:hover .dial-hint { opacity: 1; color: var(--primary); }
+  .dial .ring { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .dial .ring circle { fill: none; stroke-width: 10; }
+  .dial .ring .track { stroke: var(--primary-soft); }
+  .dial .ring .fill {
+    stroke: var(--primary);
+    stroke-linecap: round;
+  }
+  .dial .face {
+    position: absolute; inset: 16px; border-radius: 50%;
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .dial .glow {
+    position: absolute; inset: -18px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(184,134,11,.20), rgba(184,134,11,0) 70%);
+    opacity: 0;
+    transition: opacity .4s ease;
+  }
+  .dial.running .glow { opacity: 1; animation: breathe 3s ease-in-out infinite; }
+  @keyframes breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
+
+  .time-text {
+    font-size: 64px; font-weight: 800; letter-spacing: -2px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+  }
+
+  .cast-entry {
+    width: 100%; max-width: 340px; height: 58px;
+    border-radius: 16px;
+    background: var(--primary); color: #fff;
+    font-size: 18px; font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    box-shadow: var(--shadow);
+    transition: transform .08s ease, background .2s ease;
+  }
+  .cast-entry:hover { background: var(--primary-dark); }
+  .cast-entry:active { transform: scale(.97); }
+  .cast-entry .ic { font-size: 20px; line-height: 1; }
+
+  .panel {
+    width: 100%;
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .label-soft { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+
+  .presets { display: flex; gap: 10px; flex-wrap: nowrap; }
+  .preset {
+    flex: 1 1 0; min-width: 0; height: 58px;
+    border-radius: 12px;
+    background: var(--surface-muted);
+    color: var(--text-soft);
+    font-size: 17px; font-weight: 800;
+    border: 1.5px solid transparent;
+    transition: all .15s ease;
+  }
+  .preset.selected { background: var(--primary-soft); color: var(--primary); border-color: var(--primary); }
+  .preset:disabled { opacity: .4; cursor: not-allowed; }
+
+  .info-grid { display: flex; gap: 12px; }
+  .info-card {
+    flex: 1; text-align: center;
+    background: var(--surface-muted); border-radius: 12px; padding: 12px;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .info-card .k { font-size: 13px; font-weight: 800; color: var(--muted); text-transform: uppercase; }
+  .info-card .v { font-size: 18px; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .actions { display: flex; gap: 10px; width: 100%; }
+  .act {
+    height: 66px; border-radius: 16px;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    font-size: 18px; font-weight: 800;
+    transition: transform .08s ease, opacity .2s ease;
+  }
+  .act:active { transform: scale(.97); }
+  .act.secondary {
+    width: 72px; flex-shrink: 0; background: var(--surface);
+    box-shadow: var(--shadow); color: var(--text-soft); font-size: 22px;
+  }
+  .act.main { flex: 1; background: var(--primary); color: #fff; box-shadow: var(--shadow); }
+  .act.main:hover { background: var(--primary-dark); }
+  .act .icon { font-size: 22px; line-height: 1; }
+
+  /* ---------------- Cast mode ---------------- */
+  .cast-view {
+    position: fixed; inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4vmin;
+    padding: 4vmin 4vmin 18vmin;
+    background: var(--cast-bg);
+    color: var(--cast-text);
+    z-index: 100;
+    user-select: none;
+    overflow: hidden;
+  }
+  body.casting .cast-view { display: flex; }
+  body.casting .normal-view, body.casting .appbar { display: none; }
+
+  .cast-title {
+    font-size: 5.6vmin;
+    font-weight: 800;
+    color: var(--cast-muted);
+    text-align: center;
+    outline: none;
+    max-width: 86vw;
+    line-height: 1.2;
+    padding: 0 6px;
+    border-radius: 10px;
+  }
+  .cast-title:focus { color: var(--cast-text); background: rgba(255,255,255,.06); }
+  .cast-title:empty::before { content: "倒计时"; color: var(--cast-muted); }
+
+  .cast-dial {
+    position: relative;
+    width: min(66vmin, 58vh); height: min(66vmin, 58vh);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .cast-dial .ring { position: absolute; inset: 0; transform: rotate(-90deg); }
+  .cast-dial .ring circle { fill: none; stroke-width: 1.6; }
+  .cast-dial .ring .track { stroke: rgba(255,255,255,.08); }
+  .cast-dial .ring .fill {
+    stroke: var(--primary);
+    stroke-linecap: round;
+  }
+  .cast-dial .glow {
+    position: absolute; inset: -4%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(184,134,11,.28), rgba(184,134,11,0) 70%);
+    opacity: 0; transition: opacity .4s ease;
+  }
+  .cast-dial.running .glow { opacity: 1; animation: cast-breathe 3s ease-in-out infinite; }
+  @keyframes cast-breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+  .cast-dial .center {
+    display: flex; flex-direction: column; align-items: center; gap: 2vmin; line-height: 1;
+  }
+  .cast-time {
+    font-size: 18vmin; font-weight: 800; letter-spacing: -.03em;
+    font-variant-numeric: tabular-nums;
+  }
+  .cast-status { font-size: 3.4vmin; font-weight: 800; color: var(--cast-muted); letter-spacing: .2em; }
+
+  .cast-meta { font-size: 2.6vmin; color: var(--cast-muted); font-variant-numeric: tabular-nums; }
+  .cast-meta b { color: var(--cast-text); font-weight: 700; }
+
+  .cast-done {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center;
+    flex-direction: column; gap: 2vmin;
+    background: radial-gradient(circle at center, rgba(224,49,49,.22), rgba(14,17,22,.9) 75%);
+    z-index: 3;
+  }
+  .cast-done.show { display: flex; }
+  .cast-done .big {
+    font-size: 20vmin; font-weight: 900; color: #fff;
+    animation: done-flash 1s steps(2, end) infinite;
+  }
+  .cast-done .sub { font-size: 4vmin; color: #fff; font-weight: 700; }
+  @keyframes done-flash { 0%{opacity:1} 50%{opacity:.25} 100%{opacity:1} }
+
+  .cast-controls {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: center; gap: 1.8vmin;
+    flex-wrap: wrap;
+    padding: 3vmin 4vmin calc(3vmin + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(to top, rgba(10,12,16,.85), rgba(10,12,16,0));
+    transition: opacity .3s ease, transform .3s ease;
+  }
+  .cast-controls.hide { opacity: 0; transform: translateY(20px); pointer-events: none; }
+  .cast-btn {
+    height: 9vmin; min-height: 60px; padding: 0 3.4vmin; border-radius: 1.6vmin;
+    background: rgba(255,255,255,.1); color: var(--cast-text);
+    font-size: 2.6vmin; font-weight: 800;
+    display: inline-flex; align-items: center; gap: .8vmin;
+    transition: background .2s ease, transform .1s ease;
+  }
+  .cast-btn:hover { background: rgba(255,255,255,.18); }
+  .cast-btn:active { transform: scale(.96); }
+  .cast-btn.gold { background: var(--primary); color: #fff; }
+  .cast-btn.gold:hover { background: var(--primary-dark); }
+  .cast-btn .ic { font-size: 2.8vmin; }
+
+  /* fullscreen cue */
+  #fullscreenPrompt {
+    position: fixed; top: 0; left: 0; right: 0;
+    background: rgba(0,0,0,.75); color: #fff;
+    text-align: center; font-size: 14px; font-weight: 700;
+    padding: 10px; z-index: 200; display: none;
+  }
+
+  /* ---- Mobile / small screens ---- */
+  @media (max-width: 767px) {
+    .cast-entry, .dial-hint { display: none; }
+    /* mobile browsers have no fullscreen concept */
+    #castFullscreen { display: none; }
+    /* fixed 3-column grid for the remaining 6 cast buttons (2 rows x 3) */
+    .cast-controls {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      align-items: stretch;
+      padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+      background: rgba(10,12,16,.92);
+    }
+    .cast-btn {
+      width: 100%;
+      height: 58px;
+      min-height: 50px;
+      padding: 0;
+      border-radius: 14px;
+      font-size: 15px;
+      justify-content: center;
+      gap: 6px;
+    }
+    .cast-btn .ic { font-size: 16px; }
+  }
+  @media (max-width: 480px) {
+    .normal-card { gap: 16px; }
+    .presets { gap: 6px; }
+    .preset { font-size: 15px; }
+    .dial { width: 220px; height: 220px; }
+    .dial .face { inset: 12px; }
+    .dial .ring circle { stroke-width: 8; }
+    .time-text { font-size: 50px; letter-spacing: -1px; }
+    .dial .glow { inset: -14px; }
+    .panel { padding: 16px; gap: 14px; }
+    .actions { gap: 8px; }
+  }
+</style>
+</head>
+<body>
+  <div id="fullscreenPrompt">点击“进入全屏”或按 F 键可让计时器铺满整块大屏</div>
+
+  <header class="appbar">
+    <span class="brand">⏱ 德育计时器</span>
+    <div class="spacer"></div>
+    <button id="castToggle" class="icon-btn primary"><span class="dot"></span>大屏模式</button>
+  </header>
+
+  <!-- NORMAL MODE -->
+  <main class="normal-view">
+    <div class="normal-card">
+      <div class="sound-toggle-row">
+        <button id="soundBtn" class="round-icon on" title="音效开关" aria-label="音效开关">🔊</button>
+      </div>
+
+      <div class="dial" id="dial" role="button" tabindex="0" aria-label="进入大屏模式" title="点击进入大屏模式">
+        <svg class="ring" viewBox="0 0 280 280">
+          <circle class="track" cx="140" cy="140" r="132" />
+          <circle class="fill" cx="140" cy="140" r="132" />
+        </svg>
+        <div class="glow"></div>
+        <div class="face">
+          <div class="time-text" id="timeText">05:00</div>
+          <div class="dial-hint">⛶ 点击进入大屏</div>
+        </div>
+      </div>
+
+      <button class="cast-entry" id="castEntry"><span class="ic">⛶</span>大屏模式</button>
+
+      <div class="panel">
+        <div>
+          <div class="label-soft" style="margin-bottom:10px">快捷预设</div>
+          <div class="presets" id="presets">
+            <button class="preset" data-min="5">5m</button>
+            <button class="preset" data-min="10">10m</button>
+            <button class="preset" data-min="25">25m</button>
+            <button class="preset" data-min="40">40m</button>
+          </div>
+        </div>
+        <div class="info-grid">
+          <div class="info-card"><div class="k">开始时间</div><div class="v" id="startInfo">--:--:--</div></div>
+          <div class="info-card"><div class="k">预计结束</div><div class="v" id="endInfo">--:--:--</div></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="resetBtn" class="act secondary" title="重置"><span class="icon">↺</span></button>
+        <button id="minusBtn" class="act secondary" title="减少 1 分钟">−1</button>
+        <button id="mainBtn" class="act main"><span class="icon">▶</span><span id="mainLabel">开始计时</span></button>
+        <button id="addBtn" class="act secondary" title="增加 1 分钟">+1</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- CAST MODE -->
+  <section class="cast-view" id="castView">
+    <div id="castTitle" class="cast-title" contenteditable="true" spellcheck="false">倒计时</div>
+
+    <div class="cast-dial" id="castDial">
+      <svg class="ring" viewBox="0 0 100 100">
+        <circle class="track" cx="50" cy="50" r="47" />
+        <circle class="fill" cx="50" cy="50" r="47" />
+      </svg>
+      <div class="glow"></div>
+      <div class="center">
+        <div class="cast-time" id="castTime">05:00</div>
+        <div class="cast-status" id="castStatus">准备</div>
+      </div>
+      <div class="cast-done" id="castDone">
+        <div class="big">时间到！</div>
+        <div class="sub" id="castDoneHint">请结束当前环节</div>
+      </div>
+    </div>
+
+    <div class="cast-meta" id="castMeta">开始 <b>--:--</b> · 结束 <b>--:--</b></div>
+
+    <div class="cast-controls" id="castControls">
+      <button class="cast-btn gold" id="castMain"><span class="ic">▶</span><span id="castMainLabel">开始</span></button>
+      <button class="cast-btn" id="castMinus"><span class="ic">−</span>1 分钟</button>
+      <button class="cast-btn" id="castAdd"><span class="ic">+</span>1 分钟</button>
+      <button class="cast-btn" id="castReset">↺ 重置</button>
+      <button class="cast-btn" id="castSound">🔊 声音</button>
+      <button class="cast-btn" id="castFullscreen">⛶ 全屏</button>
+      <button class="cast-btn" id="castExit">退出大屏</button>
+    </div>
+  </section>
+
+<script>
+(function () {
+  'use strict';
+
+  const $ = (s) => document.querySelector(s);
+  const minuteMs = 60000;
+  const presets = [5, 10, 25, 40];
+
+  const state = {
+    durationInput: '5',
+    remainingMs: 5 * minuteMs,
+    running: false,
+    startedAt: null,
+    endsAt: null,
+    soundEnabled: true,
+    castTitleReady: true,
+    lastTickSec: null,
+    finishPlayed: false,
+    doneVisible: false,
+  };
+
+  const C = 2 * Math.PI * 132;          // normal ring circumference
+  const CCAST = 2 * Math.PI * 47;       // cast ring circumference
+
+  /* ---------- audio ---------- */
+  const SOUND_FILES = {
+    prompt: 'sounds/timer-prompt.wav',
+    tick: 'sounds/timer-tick.wav',
+    ring: 'sounds/timer-ring.wav',
+    voice: 'sounds/timer-add-minute-voice.wav',
+    subMinute: 'sounds/timer-subtract-minute-voice-yunyang-10.wav',
+  };
+  const audioCache = {};     // HTMLAudio elements (reliable playback on mobile)
+  let actx = null;
+  function ctx() {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    return actx;
+  }
+  function getAudio(src) {
+    if (!audioCache[src]) {
+      const a = new Audio(src);
+      a.preload = 'auto';
+      audioCache[src] = a;
+    }
+    return audioCache[src];
+  }
+  // Preload the sound files so the first playback has them cached (less delay).
+  // Note: does NOT create an AudioContext here, so mobile autoplay policy stays ok.
+  function loadSounds() {
+    Object.keys(SOUND_FILES).forEach((cue) => {
+      const a = getAudio(SOUND_FILES[cue]);
+      if (a.load) a.load();
+    });
+  }
+  // Unlock the AudioContext on the first touch/click (mobile autoplay policy)
+  function unlockAudio() {
+    const c = ctx();
+    if (c.state === 'suspended') c.resume();
+    document.removeEventListener('pointerdown', unlockAudio);
+    document.removeEventListener('touchend', unlockAudio);
+    document.removeEventListener('click', unlockAudio);
+  }
+  ['pointerdown', 'touchend', 'click'].forEach((ev) => {
+    document.addEventListener(ev, unlockAudio);
+  });
+  function tone(freq, dur, delay, vol) {
+    const c = ctx();
+    if (c.state === 'suspended') c.resume();
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    const t = c.currentTime + (delay || 0);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol || 0.3, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, t + (dur || 0.2));
+    o.connect(g).connect(c.destination);
+    o.start(t);
+    o.stop(t + (dur || 0.2) + 0.05);
+  }
+  function synth(cue) {
+    if (cue === 'prompt') { tone(880, 0.16, 0, 0.28); tone(1174.6, 0.22, 0.14, 0.28); }
+    else if (cue === 'tick') { tone(1500, 0.05, 0, 0.5); }
+    else if (cue === 'ring') {
+      for (let i = 0; i < 4; i++) { tone(988, 0.35, i * 0.5, 0.35); tone(740, 0.35, i * 0.5 + 0.22, 0.3); }
+    }
+    else if (cue === 'voice') { tone(659, 0.14, 0, 0.3); tone(880, 0.14, 0.16, 0.3); tone(1108.7, 0.28, 0.32, 0.3); }
+    else if (cue === 'plus') { tone(587, 0.14, 0, 0.32); tone(880, 0.2, 0.14, 0.3); }
+    else if (cue === 'minus') { tone(659, 0.15, 0, 0.32); tone(494, 0.18, 0.15, 0.3); tone(392, 0.26, 0.3, 0.28); }
+    else if (cue === 'subMinute') { tone(659, 0.15, 0, 0.32); tone(494, 0.18, 0.15, 0.3); tone(392, 0.26, 0.3, 0.28); }
+    else if (cue === 'limit') { tone(196, 0.16, 0, 0.3); tone(196, 0.16, 0.2, 0.24); }
+  }
+  function playSound(cue) {
+    if (!state.soundEnabled) return;
+    const a = getAudio(SOUND_FILES[cue]);
+    try {
+      a.currentTime = 0;
+      const p = a.play();
+      if (p) p.catch(() => synth(cue));
+    } catch (e) {
+      synth(cue);
+    }
+  }
+  function playCue(cue) {
+    if (!state.soundEnabled) return;
+    if (cue === 'plus' || cue === 'minus' || cue === 'limit') { synth(cue); return; }
+    playSound(cue);
+  }
+
+  /* ---------- helpers ---------- */
+  function totalMs() {
+    const m = Number(state.durationInput);
+    return Number.isFinite(m) && m > 0 ? Math.round(m * minuteMs) : 0;
+  }
+  function fmtTime(ms) {
+    const s = Math.ceil(ms / 1000);
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    if (h > 0) return `${pad(h)}:${pad(m)}:${pad(sec)}`;
+    return `${pad(m)}:${pad(sec)}`;
+  }
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function clock(d) { return d ? `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` : '--:--:--'; }
+  function clockHM(d) { return d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '--:--'; }
+  // Smooth, rAF-driven ring animation (works well on mobile; no SVG transition jank)
+  let ringValue = 1, ringTarget = 1, ringRaf = null;
+  let dialFill = null, castFill = null;
+  function getRings() {
+    if (!dialFill) dialFill = document.querySelector('.dial .ring .fill');
+    if (!castFill) castFill = document.querySelector('.cast-dial .ring .fill');
+  }
+  function drawRing(frac) {
+    if (!dialFill) getRings();
+    if (dialFill) { dialFill.style.strokeDasharray = C; dialFill.style.strokeDashoffset = C * (1 - frac); }
+    if (castFill) { castFill.style.strokeDasharray = CCAST; castFill.style.strokeDashoffset = CCAST * (1 - frac); }
+  }
+  function updateRing(frac) {
+    ringTarget = frac;
+    if (!ringRaf) ringRaf = requestAnimationFrame(animateRing);
+  }
+  function animateRing() {
+    const diff = ringTarget - ringValue;
+    if (Math.abs(diff) < 0.0004) {
+      ringValue = ringTarget;
+      drawRing(ringValue);
+      ringRaf = null;
+      return;
+    }
+    ringValue += diff * 0.16;   // smooth ease toward target
+    drawRing(ringValue);
+    ringRaf = requestAnimationFrame(animateRing);
+  }
+  function setRing(el, total, remaining) {
+    updateRing(total > 0 ? Math.max(0, Math.min(1, remaining / total)) : 1);
+  }
+  function setRingCast(el, total, remaining) {
+    updateRing(total > 0 ? Math.max(0, Math.min(1, remaining / total)) : 1);
+  }
+
+  /* ---------- timer control ---------- */
+  let timerId = null;
+  function startInterval() {
+    if (timerId) clearInterval(timerId);
+    timerId = setInterval(update, 100);
+  }
+  function stopInterval() {
+    if (timerId) { clearInterval(timerId); timerId = null; }
+  }
+
+  function start() {
+    let base = state.endsAt ? state.remainingMs : totalMs();
+    if (base <= 0) base = totalMs();
+    if (base <= 0) return;
+    const now = Date.now();
+    if (!state.endsAt) state.startedAt = new Date(now);
+    state.endsAt = new Date(now + base);
+    state.remainingMs = base;
+    state.running = true;
+    state.lastTickSec = Math.ceil(base / 1000);
+    state.finishPlayed = false;
+    hideDone();
+    playSound('prompt');
+    startInterval();
+    render();
+  }
+
+  function pause() {
+    if (!state.running) return;
+    state.remainingMs = Math.max(state.endsAt.getTime() - Date.now(), 0);
+    state.running = false;
+    stopInterval();
+    render();
+  }
+
+  function reset() {
+    stopInterval();
+    state.running = false;
+    state.remainingMs = totalMs();
+    state.startedAt = null;
+    state.endsAt = null;
+    state.finishPlayed = false;
+    state.lastTickSec = Math.ceil(state.remainingMs / 1000);
+    hideDone();
+    render();
+  }
+
+  function addMinute() {
+    if (state.running && state.endsAt) {
+      playSound('voice');
+      state.endsAt = new Date(state.endsAt.getTime() + minuteMs);
+      state.remainingMs = Math.max(state.endsAt.getTime() - Date.now(), 0);
+    } else if (state.endsAt) {
+      playCue('plus');
+      state.remainingMs += minuteMs;
+    } else {
+      playCue('plus');
+      setDuration(curMinutes() + 1);
+      return;
+    }
+    hideDone();
+    render();
+  }
+
+  function minusMinute() {
+    if (state.running && state.endsAt) {
+      const next = state.endsAt.getTime() - minuteMs;
+      if (next <= Date.now()) { finish(); return; }
+      state.endsAt = new Date(next);
+      state.remainingMs = next - Date.now();
+      playSound('subMinute');
+    } else if (state.endsAt) {
+      if (state.remainingMs > 0) {
+        state.remainingMs = Math.max(state.remainingMs - minuteMs, 0);
+        state.lastTickSec = Math.ceil(state.remainingMs / 1000);
+        playCue('minus');
+      } else {
+        playCue('limit');
+      }
+    } else {
+      if (curMinutes() > 1) { playCue('minus'); setDuration(curMinutes() - 1); }
+      else { playCue('limit'); }
+    }
+    hideDone();
+    render();
+  }
+
+  function curMinutes() {
+    const m = Number(state.durationInput);
+    return Number.isFinite(m) ? Math.round(m) : 0;
+  }
+  function setDuration(min) {
+    if (state.running) return;
+    min = Math.max(1, Math.min(999, Math.round(min)));
+    state.durationInput = String(min);
+    state.remainingMs = Math.round(min * minuteMs);
+    state.startedAt = null;
+    state.endsAt = null;
+    state.lastTickSec = Math.ceil(state.remainingMs / 1000);
+    hideDone();
+    render();
+  }
+
+  function update() {
+    if (!state.running || !state.endsAt) return;
+    const rem = Math.max(state.endsAt.getTime() - Date.now(), 0);
+    state.remainingMs = rem;
+    const sec = Math.ceil(rem / 1000);
+    if (rem > 0 && sec > 0 && sec < state.lastTickSec) playSound('tick');
+    state.lastTickSec = sec;
+    if (rem <= 0) finish();
+    else render();
+  }
+
+  function finish() {
+    state.running = false;
+    stopInterval();
+    state.remainingMs = 0;
+    if (!state.finishPlayed) {
+      state.finishPlayed = true;
+      playSound('ring');
+      if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 600]);
+      showDone();
+    }
+    render();
+  }
+
+  function showDone() {
+    state.doneVisible = true;
+    $('#castDone').classList.add('show');
+    const title = $('#castTitle').textContent.trim();
+    $('#castDoneHint').textContent = (title && title !== '倒计时') ? `${title}，请结束当前环节` : '请结束当前环节';
+  }
+  function hideDone() {
+    state.doneVisible = false;
+    $('#castDone').classList.remove('show');
+  }
+
+  /* ---------- preset / custom input ---------- */
+  function applyPreset(min) {
+    if (state.running) return;
+    state.durationInput = String(min);
+    state.remainingMs = min * minuteMs;
+    state.startedAt = null;
+    state.endsAt = null;
+    state.lastTickSec = Math.ceil(state.remainingMs / 1000);
+    render();
+  }
+
+  /* ---------- render ---------- */
+  let lastFitKey = '';
+  function fitCastTime() {
+    const dial = $('#castDial');
+    const time = $('#castTime');
+    if (!dial || !time) return;
+    const dw = dial.clientWidth;
+    const dh = dial.clientHeight;
+    if (dw <= 0 || dh <= 0) return;
+    const key = time.textContent.length + ':' + Math.round(dw) + ':' + Math.round(dh);
+    if (key === lastFitKey) return;
+    lastFitKey = key;
+    // measure against a provisional font, then scale to fit the ring interior
+    const base = dw * 0.32;
+    time.style.fontSize = base + 'px';
+    const w = time.getBoundingClientRect().width;
+    if (w <= 0) return;
+    let fs = base * (dw * 0.8) / w;
+    fs = Math.min(fs, dh * 0.36);
+    time.style.fontSize = fs.toFixed(1) + 'px';
+  }
+
+  function render() {
+    const total = totalMs();
+    const rem = state.remainingMs;
+
+    // normal: preset highlight
+    document.querySelectorAll('.preset').forEach((btn) => {
+      const sel = Number(btn.dataset.min) === Number(state.durationInput);
+      btn.classList.toggle('selected', sel);
+      btn.disabled = state.running;
+    });
+
+    $('#timeText').textContent = fmtTime(rem);
+    $('#startInfo').textContent = clock(state.startedAt);
+    $('#endInfo').textContent = clock(state.endsAt);
+    $('#mainLabel').textContent = state.running ? '暂停' : '开始计时';
+    $('#mainBtn').querySelector('.icon').textContent = state.running ? '⏸' : '▶';
+    $('#dial').classList.toggle('running', state.running);
+    $('#soundBtn').textContent = state.soundEnabled ? '🔊' : '🔇';
+    $('#soundBtn').classList.toggle('on', state.soundEnabled);
+    setRing($('#dial'), total, rem);
+
+    // cast
+    $('#castTime').textContent = fmtTime(rem);
+    $('#castStatus').textContent = state.running ? '进行中' : (rem <= 0 ? '已结束' : (state.endsAt ? '已暂停' : '准备'));
+    $('#castMainLabel').textContent = state.running ? '暂停' : '开始';
+    $('#castMain').querySelector('.ic').textContent = state.running ? '⏸' : '▶';
+    $('#castDial').classList.toggle('running', state.running);
+    $('#castSound').innerHTML = (state.soundEnabled ? '🔊' : '🔇') + ' 声音';
+    setRingCast($('#castDial'), total, rem);
+    $('#castMeta').innerHTML = `开始 <b>${clockHM(state.startedAt)}</b> · 结束 <b>${clockHM(state.endsAt)}</b>`;
+    fitCastTime();
+  }
+
+  /* ---------- mode toggling ---------- */
+  function enterCast() {
+    document.body.classList.add('casting');
+    pokeControls();
+    render();
+    requestFullscreen();
+  }
+  function exitCast() {
+    document.body.classList.remove('casting');
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }
+  function requestFullscreen() {
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen().catch(() => {});
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    else if (el.msRequestFullscreen) el.msRequestFullscreen();
+  }
+  function toggleFullscreen() {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else requestFullscreen();
+  }
+  function onFsChange() {
+    const prompt = $('#fullscreenPrompt');
+    if (document.fullscreenElement) {
+      prompt.style.display = 'none';
+    } else {
+      // show hint only when casting and not fullscreen
+      prompt.style.display = document.body.classList.contains('casting') ? 'block' : 'none';
+    }
+  }
+
+  let hideTimer = null;
+  const isMobileScreen = () => window.matchMedia('(max-width: 767px)').matches;
+  function pokeControls() {
+    const bar = $('#castControls');
+    bar.classList.remove('hide');
+    clearTimeout(hideTimer);
+    // Keep the controls always visible on mobile; only big screens auto-hide.
+    if (isMobileScreen()) return;
+    hideTimer = setTimeout(() => bar.classList.add('hide'), 4200);
+  }
+
+  /* ---------- events ---------- */
+  $('#castToggle').addEventListener('click', enterCast);
+  $('#castEntry').addEventListener('click', enterCast);
+  $('#dial').addEventListener('click', enterCast);
+  $('#dial').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); enterCast(); }
+  });
+  $('#castExit').addEventListener('click', exitCast);
+  $('#castFullscreen').addEventListener('click', toggleFullscreen);
+
+  $('#mainBtn').addEventListener('click', () => (state.running ? pause() : start()));
+  $('#resetBtn').addEventListener('click', reset);
+  $('#addBtn').addEventListener('click', addMinute);
+  $('#minusBtn').addEventListener('click', minusMinute);
+
+  $('#castMain').addEventListener('click', () => (state.running ? pause() : start()));
+  $('#castReset').addEventListener('click', reset);
+  $('#castAdd').addEventListener('click', addMinute);
+  $('#castMinus').addEventListener('click', minusMinute);
+  $('#castSound').addEventListener('click', toggleSound);
+  $('#soundBtn').addEventListener('click', toggleSound);
+
+  function toggleSound() {
+    state.soundEnabled = !state.soundEnabled;
+    render();
+  }
+
+  document.querySelectorAll('.preset').forEach((btn) => {
+    btn.addEventListener('click', () => applyPreset(Number(btn.dataset.min)));
+  });
+
+  $('#castTitle').addEventListener('input', () => {
+    if (state.doneVisible) {
+      const title = $('#castTitle').textContent.trim();
+      $('#castDoneHint').textContent = (title && title !== '倒计时') ? `${title}，请结束当前环节` : '请结束当前环节';
+    }
+  });
+
+  // controls auto-hide in cast mode
+  ['mousemove', 'mousedown', 'touchstart', 'keydown'].forEach((ev) => {
+    document.addEventListener(ev, () => {
+      if (document.body.classList.contains('casting')) pokeControls();
+    });
+  });
+
+  // keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.isContentEditable) return;
+    const k = e.key.toLowerCase();
+    if (k === ' ' || k === 'enter') { e.preventDefault(); state.running ? pause() : start(); }
+    else if (k === 'r') reset();
+    else if (k === '+') addMinute();
+    else if (k === '-') minusMinute();
+    else if (k === 'm') toggleSound();
+    else if (k === 'f') toggleFullscreen();
+    else if (k === 'escape' && document.body.classList.contains('casting')) exitCast();
+  });
+
+  document.addEventListener('fullscreenchange', onFsChange);
+  document.addEventListener('webkitfullscreenchange', onFsChange);
+
+  // resume accurate remaining time when tab comes back
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && state.running && state.endsAt) update();
+  });
+
+  window.addEventListener('resize', () => {
+    lastFitKey = '';
+    fitCastTime();
+  });
+
+  // init
+  loadSounds();
+  setRing($('#dial'), totalMs(), state.remainingMs);
+  setRingCast($('#castDial'), totalMs(), state.remainingMs);
+  render();
+})();
+</script>
+</body>
+</html>
