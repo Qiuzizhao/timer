@@ -2,14 +2,14 @@
   "expo": {
     "name": "Timer",
     "slug": "timer",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/images/timer-app-icon-20260625.png",
     "scheme": "timer",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "buildNumber": "5",
+      "buildNumber": "6",
       "bundleIdentifier": "com.qiuzizhao.timer",
       "supportsTablet": true,
       "infoPlist": {
@@ -22,13 +22,17 @@
     },
     "android": {
       "package": "com.qiuzizhao.timer",
-      "versionCode": 5,
+      "versionCode": 6,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/timer-app-icon-android-foreground.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "output": "static",
@@ -65,7 +69,11 @@
       "typedRoutes": true
     },
     "extra": {
-      "router": {}
-    }
+      "router": {},
+      "eas": {
+        "projectId": "dbd2ce25-a2fa-4364-8de9-1894d1b50f74"
+      }
+    },
+    "owner": "qiuzizhao"
   }
 }
