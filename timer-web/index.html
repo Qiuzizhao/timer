@@ -293,7 +293,7 @@
   .cast-done .big {
     position: relative;
     font-size: min(22vw, 30vh);
-    font-weight: 900; color: #fff; line-height: 1; letter-spacing: .02em;
+    font-weight: 900; color: #fff; line-height: 1;
     text-shadow: 0 0 6vmin rgba(224,49,49,.45);
   }
   @keyframes done-flash { 0%,100%{opacity:1} 50%{opacity:.4} }
@@ -757,6 +757,7 @@
     $('#castDone').classList.add('show');
     $('#castDial').classList.add('done');
     $('#castView').classList.add('done');
+    requestAnimationFrame(alignDoneText);
   }
   function hideDone() {
     state.doneVisible = false;
@@ -765,6 +766,22 @@
     $('#castView').classList.remove('done');
   }
 
+  /* CJK punctuation (like ！) leaves a one-sided gap, so nudge the line until the
+     visible glyphs, not the text box, sit on the centre line of the screen. */
+  function alignDoneText() {
+    const el = document.querySelector('#castDone .big');
+    if (!el) return;
+    el.style.transform = 'none';
+    const cs = getComputedStyle(el);
+    const cv = alignDoneText._cv || (alignDoneText._cv = document.createElement('canvas'));
+    const ctx = cv.getContext('2d');
+    ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const m = ctx.measureText(el.textContent);
+    if (!m.width || typeof m.actualBoundingBoxLeft !== 'number' || typeof m.actualBoundingBoxRight !== 'number') return;
+    const inkCenter = (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2;
+    const shift = m.width / 2 - inkCenter;
+    if (Math.abs(shift) > 0.5) el.style.transform = `translateX(${shift.toFixed(1)}px)`;
+  }
   /* ---------- preset / custom input ---------- */
   function applyPreset(min) {
     if (state.running) return;
@@ -916,6 +933,7 @@
   window.addEventListener('resize', () => {
     lastFitKey = '';
     fitCastTime();
+    if (state.doneVisible) alignDoneText();
   });
 
   // init
