@@ -295,7 +295,6 @@
     background: linear-gradient(to top, rgba(10,12,16,.85), rgba(10,12,16,0));
     transition: opacity .3s ease, transform .3s ease;
   }
-  .cast-controls.hide { opacity: 0; transform: translateY(20px); pointer-events: none; }
   .cast-btn {
     height: 9vmin; min-height: 60px; padding: 0 3.4vmin; border-radius: 1.6vmin;
     background: rgba(255,255,255,.1); color: var(--cast-text);
@@ -812,7 +811,6 @@
   /* ---------- mode toggling ---------- */
   function enterCast() {
     document.body.classList.add('casting');
-    pokeControls();
     render();
     requestFullscreen();
   }
@@ -838,17 +836,6 @@
       // show hint only when casting and not fullscreen
       prompt.style.display = document.body.classList.contains('casting') ? 'block' : 'none';
     }
-  }
-
-  let hideTimer = null;
-  const isMobileScreen = () => window.matchMedia('(max-width: 767px)').matches;
-  function pokeControls() {
-    const bar = $('#castControls');
-    bar.classList.remove('hide');
-    clearTimeout(hideTimer);
-    // Keep the controls always visible on mobile; only big screens auto-hide.
-    if (isMobileScreen()) return;
-    hideTimer = setTimeout(() => bar.classList.add('hide'), 4200);
   }
 
   /* ---------- events ---------- */
@@ -887,13 +874,6 @@
       const title = $('#castTitle').textContent.trim();
       $('#castDoneHint').textContent = (title && title !== '倒计时') ? `${title}，请结束当前环节` : '请结束当前环节';
     }
-  });
-
-  // controls auto-hide in cast mode
-  ['mousemove', 'mousedown', 'touchstart', 'keydown'].forEach((ev) => {
-    document.addEventListener(ev, () => {
-      if (document.body.classList.contains('casting')) pokeControls();
-    });
   });
 
   // keyboard shortcuts
