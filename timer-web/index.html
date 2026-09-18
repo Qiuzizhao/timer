@@ -215,7 +215,8 @@
     align-items: center;
     justify-content: center;
     gap: 4vmin;
-    padding: 4vmin 4vmin 18vmin;
+    /* bottom padding keeps the toolbar from overlapping the start/end line on short screens */
+    padding: 4vmin 4vmin max(18vmin, 104px);
     background: var(--cast-bg);
     color: var(--cast-text);
     z-index: 100;
@@ -272,28 +273,34 @@
   .cast-meta b { color: var(--cast-text); font-weight: 700; }
 
   .cast-done {
-    position: absolute; inset: 0;
+    position: fixed; inset: 0;
     display: none;
     align-items: center; justify-content: center;
-    flex-direction: column; gap: 1.6vmin;
-    padding: 8%;
+    padding: 0 5vw;
     text-align: center;
-    border-radius: 50%;
-    background: radial-gradient(circle at center, rgba(224,49,49,.42), rgba(14,17,22,.97) 72%);
+    background: radial-gradient(circle at 50% 46%, rgba(224,49,49,.42) 0%, rgba(16,19,25,.72) 42%, rgba(8,10,14,.96) 72%);
     z-index: 3;
   }
   .cast-done.show { display: flex; }
+  /* pulsing red halo behind the message */
+  .cast-done::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 46%, rgba(224,49,49,.5), rgba(224,49,49,0) 58%);
+    animation: done-flash 1.8s ease-in-out infinite;
+    pointer-events: none;
+  }
   .cast-done .big {
-    font-size: calc(min(66vmin, 58vh) * .2);
-    font-weight: 900; color: #fff; line-height: 1.05;
+    position: relative;
+    font-size: min(22vw, 30vh);
+    font-weight: 900; color: #fff; line-height: 1; letter-spacing: .02em;
+    text-shadow: 0 0 6vmin rgba(224,49,49,.45);
   }
-  .cast-done .sub {
-    font-size: calc(min(66vmin, 58vh) * .058);
-    color: #FFD8D8; font-weight: 700; line-height: 1.3;
-  }
-  @keyframes done-flash { 0%,100%{opacity:1} 50%{opacity:.35} }
+  @keyframes done-flash { 0%,100%{opacity:1} 50%{opacity:.4} }
   /* when the countdown is over, the alert replaces the digits and the ring turns red */
   .cast-dial.done .center { opacity: 0; }
+  .cast-title, .cast-meta { transition: opacity .3s ease; }
+  .cast-view.done .cast-title, .cast-view.done .cast-meta { opacity: 0; }
   .cast-dial.done .ring .track { stroke: rgba(224,49,49,.5); }
   .cast-dial.done .glow {
     opacity: 1;
@@ -303,6 +310,7 @@
 
   .cast-controls {
     position: absolute; bottom: 0; left: 0; right: 0;
+    z-index: 5;
     display: flex; align-items: center; justify-content: center; gap: 1.8vmin;
     flex-wrap: wrap;
     padding: 3vmin 4vmin calc(3vmin + env(safe-area-inset-bottom, 0px));
@@ -441,7 +449,6 @@
       </div>
       <div class="cast-done" id="castDone">
         <div class="big">时间到！</div>
-        <div class="sub" id="castDoneHint">请结束当前环节</div>
       </div>
     </div>
 
@@ -749,13 +756,13 @@
     state.doneVisible = true;
     $('#castDone').classList.add('show');
     $('#castDial').classList.add('done');
-    const title = $('#castTitle').textContent.trim();
-    $('#castDoneHint').textContent = (title && title !== '倒计时') ? `${title}，请结束当前环节` : '请结束当前环节';
+    $('#castView').classList.add('done');
   }
   function hideDone() {
     state.doneVisible = false;
     $('#castDone').classList.remove('show');
     $('#castDial').classList.remove('done');
+    $('#castView').classList.remove('done');
   }
 
   /* ---------- preset / custom input ---------- */
@@ -883,13 +890,6 @@
 
   document.querySelectorAll('.preset').forEach((btn) => {
     btn.addEventListener('click', () => applyPreset(Number(btn.dataset.min)));
-  });
-
-  $('#castTitle').addEventListener('input', () => {
-    if (state.doneVisible) {
-      const title = $('#castTitle').textContent.trim();
-      $('#castDoneHint').textContent = (title && title !== '倒计时') ? `${title}，请结束当前环节` : '请结束当前环节';
-    }
   });
 
   // keyboard shortcuts
