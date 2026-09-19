@@ -31,6 +31,9 @@
   html, body {
     height: 100%;
     margin: 0;
+    /* phones: keep one-finger scrolling, but block pinch zoom and double-tap zoom */
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
       "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     color: var(--text);
@@ -930,6 +933,18 @@
     if (!document.hidden && state.running && state.endsAt) update();
   });
 
+  /* ---------- lock gestures on touch devices ----------
+     `user-scalable=no` is ignored by iOS Safari, and touch-action alone is not
+     enough on older WebKit, so the pinch gestures are cancelled explicitly. ---------- */
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => {
+    document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  });
+  document.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 1) e.preventDefault();   // two fingers = pinch, never pan
+  }, { passive: false });
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 1) e.preventDefault();
+  }, { passive: false });
   window.addEventListener('resize', () => {
     lastFitKey = '';
     fitCastTime();
