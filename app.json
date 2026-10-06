@@ -2,14 +2,14 @@
   "expo": {
     "name": "Timer",
     "slug": "timer",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/images/timer-app-icon-20260625.png",
     "scheme": "timer",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "buildNumber": "7",
+      "buildNumber": "8",
       "bundleIdentifier": "com.qiuzizhao.timer",
       "supportsTablet": true,
       "infoPlist": {
@@ -22,7 +22,7 @@
     },
     "android": {
       "package": "com.qiuzizhao.timer",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/images/timer-app-icon-android-foreground.png"
