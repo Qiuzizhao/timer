@@ -31,6 +31,9 @@
   html, body {
     height: 100%;
     margin: 0;
+    /* phones: keep one-finger scrolling, but block pinch zoom and double-tap zoom */
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
       "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     color: var(--text);
@@ -215,7 +218,8 @@
     align-items: center;
     justify-content: center;
     gap: 4vmin;
-    padding: 4vmin 4vmin 18vmin;
+    /* bottom padding keeps the toolbar from overlapping the start/end line on short screens */
+    padding: 4vmin 4vmin max(18vmin, 104px);
     background: var(--cast-bg);
     color: var(--cast-text);
     z-index: 100;
@@ -272,30 +276,50 @@
   .cast-meta b { color: var(--cast-text); font-weight: 700; }
 
   .cast-done {
-    position: absolute; inset: 0;
+    position: fixed; inset: 0;
     display: none;
     align-items: center; justify-content: center;
-    flex-direction: column; gap: 2vmin;
-    background: radial-gradient(circle at center, rgba(224,49,49,.22), rgba(14,17,22,.9) 75%);
+    padding: 0 5vw;
+    text-align: center;
+    background: radial-gradient(circle at 50% 46%, rgba(224,49,49,.42) 0%, rgba(16,19,25,.72) 42%, rgba(8,10,14,.96) 72%);
     z-index: 3;
   }
   .cast-done.show { display: flex; }
-  .cast-done .big {
-    font-size: 20vmin; font-weight: 900; color: #fff;
-    animation: done-flash 1s steps(2, end) infinite;
+  /* pulsing red halo behind the message */
+  .cast-done::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 46%, rgba(224,49,49,.5), rgba(224,49,49,0) 58%);
+    animation: done-flash 1.8s ease-in-out infinite;
+    pointer-events: none;
   }
-  .cast-done .sub { font-size: 4vmin; color: #fff; font-weight: 700; }
-  @keyframes done-flash { 0%{opacity:1} 50%{opacity:.25} 100%{opacity:1} }
+  .cast-done .big {
+    position: relative;
+    font-size: min(22vw, 30vh);
+    font-weight: 900; color: #fff; line-height: 1;
+    text-shadow: 0 0 6vmin rgba(224,49,49,.45);
+  }
+  @keyframes done-flash { 0%,100%{opacity:1} 50%{opacity:.4} }
+  /* when the countdown is over, the alert replaces the digits and the ring turns red */
+  .cast-dial.done .center { opacity: 0; }
+  .cast-title, .cast-meta { transition: opacity .3s ease; }
+  .cast-view.done .cast-title, .cast-view.done .cast-meta { opacity: 0; }
+  .cast-dial.done .ring .track { stroke: rgba(224,49,49,.5); }
+  .cast-dial.done .glow {
+    opacity: 1;
+    background: radial-gradient(circle, rgba(224,49,49,.32), rgba(224,49,49,0) 70%);
+    animation: done-flash 1.6s ease-in-out infinite;
+  }
 
   .cast-controls {
     position: absolute; bottom: 0; left: 0; right: 0;
+    z-index: 5;
     display: flex; align-items: center; justify-content: center; gap: 1.8vmin;
     flex-wrap: wrap;
     padding: 3vmin 4vmin calc(3vmin + env(safe-area-inset-bottom, 0px));
     background: linear-gradient(to top, rgba(10,12,16,.85), rgba(10,12,16,0));
     transition: opacity .3s ease, transform .3s ease;
   }
-  .cast-controls.hide { opacity: 0; transform: translateY(20px); pointer-events: none; }
   .cast-btn {
     height: 9vmin; min-height: 60px; padding: 0 3.4vmin; border-radius: 1.6vmin;
     background: rgba(255,255,255,.1); color: var(--cast-text);
@@ -428,7 +452,6 @@
       </div>
       <div class="cast-done" id="castDone">
         <div class="big">时间到！</div>
-        <div class="sub" id="castDoneHint">请结束当前环节</div>
       </div>
     </div>
 
@@ -735,14 +758,33 @@
   function showDone() {
     state.doneVisible = true;
     $('#castDone').classList.add('show');
-    const title = $('#castTitle').textContent.trim();
-    $('#castDoneHint').textContent = (title && title !== '倒计时') ? `${title}，请结束当前环节` : '请结束当前环节';
+    $('#castDial').classList.add('done');
+    $('#castView').classList.add('done');
+    requestAnimationFrame(alignDoneText);
   }
   function hideDone() {
     state.doneVisible = false;
     $('#castDone').classList.remove('show');
+    $('#castDial').classList.remove('done');
+    $('#castView').classList.remove('done');
   }
 
+  /* CJK punctuation (like ！) leaves a one-sided gap, so nudge the line until the
+     visible glyphs, not the text box, sit on the centre line of the screen. */
+  function alignDoneText() {
+    const el = document.querySelector('#castDone .big');
+    if (!el) return;
+    el.style.transform = 'none';
+    const cs = getComputedStyle(el);
+    const cv = alignDoneText._cv || (alignDoneText._cv = document.createElement('canvas'));
+    const ctx = cv.getContext('2d');
+    ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const m = ctx.measureText(el.textContent);
+    if (!m.width || typeof m.actualBoundingBoxLeft !== 'number' || typeof m.actualBoundingBoxRight !== 'number') return;
+    const inkCenter = (m.actualBoundingBoxRight - m.actualBoundingBoxLeft) / 2;
+    const shift = m.width / 2 - inkCenter;
+    if (Math.abs(shift) > 0.5) el.style.transform = `translateX(${shift.toFixed(1)}px)`;
+  }
   /* ---------- preset / custom input ---------- */
   function applyPreset(min) {
     if (state.running) return;
@@ -812,7 +854,6 @@
   /* ---------- mode toggling ---------- */
   function enterCast() {
     document.body.classList.add('casting');
-    pokeControls();
     render();
     requestFullscreen();
   }
@@ -838,17 +879,6 @@
       // show hint only when casting and not fullscreen
       prompt.style.display = document.body.classList.contains('casting') ? 'block' : 'none';
     }
-  }
-
-  let hideTimer = null;
-  const isMobileScreen = () => window.matchMedia('(max-width: 767px)').matches;
-  function pokeControls() {
-    const bar = $('#castControls');
-    bar.classList.remove('hide');
-    clearTimeout(hideTimer);
-    // Keep the controls always visible on mobile; only big screens auto-hide.
-    if (isMobileScreen()) return;
-    hideTimer = setTimeout(() => bar.classList.add('hide'), 4200);
   }
 
   /* ---------- events ---------- */
@@ -882,20 +912,6 @@
     btn.addEventListener('click', () => applyPreset(Number(btn.dataset.min)));
   });
 
-  $('#castTitle').addEventListener('input', () => {
-    if (state.doneVisible) {
-      const title = $('#castTitle').textContent.trim();
-      $('#castDoneHint').textContent = (title && title !== '倒计时') ? `${title}，请结束当前环节` : '请结束当前环节';
-    }
-  });
-
-  // controls auto-hide in cast mode
-  ['mousemove', 'mousedown', 'touchstart', 'keydown'].forEach((ev) => {
-    document.addEventListener(ev, () => {
-      if (document.body.classList.contains('casting')) pokeControls();
-    });
-  });
-
   // keyboard shortcuts
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT' || e.target.isContentEditable) return;
@@ -917,9 +933,22 @@
     if (!document.hidden && state.running && state.endsAt) update();
   });
 
+  /* ---------- lock gestures on touch devices ----------
+     `user-scalable=no` is ignored by iOS Safari, and touch-action alone is not
+     enough on older WebKit, so the pinch gestures are cancelled explicitly. ---------- */
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => {
+    document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  });
+  document.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 1) e.preventDefault();   // two fingers = pinch, never pan
+  }, { passive: false });
+  document.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 1) e.preventDefault();
+  }, { passive: false });
   window.addEventListener('resize', () => {
     lastFitKey = '';
     fitCastTime();
+    if (state.doneVisible) alignDoneText();
   });
 
   // init
