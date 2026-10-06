@@ -32,6 +32,15 @@ export function addMinuteTimerForeground(endsAt: number, soundEnabled: boolean) 
   }
 }
 
+export function subtractMinuteTimerForeground(endsAt: number, soundEnabled: boolean) {
+  if (Platform.OS !== 'android' || !TimerForeground) return;
+  try {
+    TimerForeground.subtractMinute(endsAt, soundEnabled);
+  } catch {
+    // Nothing to update.
+  }
+}
+
 export function stopTimerForeground() {
   if (Platform.OS !== 'android' || !TimerForeground) return;
   try {

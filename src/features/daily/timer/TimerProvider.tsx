@@ -6,9 +6,9 @@ import { Platform } from 'react-native';
 import { DEFAULT_TIMER_SOUND_ENABLED, getTimerActionSoundCue, shouldPlayTimerTick, type TimerActionSound, type TimerSoundCue } from './sound';
 import { createTimerStartSnapshot } from './time';
 import { cancelEndNotification, configureNotificationHandling, END_NOTIFICATION_DELAY_MS, ensureNotificationPermissions, scheduleEndNotification } from './notifications';
-import { addMinuteTimerForeground, startTimerForeground, stopTimerForeground, updateTimerForeground } from './foreground';
+import { subtractMinuteTimerForeground, addMinuteTimerForeground, startTimerForeground, stopTimerForeground, updateTimerForeground } from './foreground';
 
-export const minutePresets = [5, 10, 25, 40];
+export const minutePresets = [3, 5, 8, 10];
 export const minuteMs = 60 * 1000;
 
 /**
@@ -30,6 +30,7 @@ type TimerContextValue = {
   pause: () => void;
   reset: () => void;
   addMinute: () => void;
+  subtractMinute: () => void;
   toggleSound: () => void;
 };
 
@@ -47,8 +48,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const tickPlayer = useAudioPlayer(require('../../../../assets/sounds/timer-tick.wav'), { downloadFirst: true, keepAudioSessionActive: true });
   const ringPlayer = useAudioPlayer(require('../../../../assets/sounds/timer-ring.wav'), { downloadFirst: true, keepAudioSessionActive: true });
   const addMinuteVoicePlayer = useAudioPlayer(require('../../../../assets/sounds/timer-add-minute-voice.wav'), { downloadFirst: true, keepAudioSessionActive: true });
+  const subtractMinuteVoicePlayer = useAudioPlayer(require('../../../../assets/sounds/timer-subtract-minute-voice.wav'), { downloadFirst: true, keepAudioSessionActive: true });
   const previousDisplayedSecondsRef = useRef<number | null>(Math.ceil(remainingMs / 1000));
   const finishSoundPlayedRef = useRef(false);
+  const tickSuppressedUntilRef = useRef(0);
   const runningRef = useRef(false);
   const backgroundAudioRef = useRef(false);
   const releaseBackgroundAudioTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -132,9 +135,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     tickPlayer.volume = 1;
     ringPlayer.muted = false;
     ringPlayer.volume = 1;
+    subtractMinuteVoicePlayer.muted = false;
+    subtractMinuteVoicePlayer.volume = 1;
     addMinuteVoicePlayer.muted = false;
     addMinuteVoicePlayer.volume = 1;
-  }, [addMinuteVoicePlayer, promptPlayer, ringPlayer, tickPlayer]);
+  }, [subtractMinuteVoicePlayer, addMinuteVoicePlayer, promptPlayer, ringPlayer, tickPlayer]);
 
   const triggerHaptic = useCallback((style: 'light' | 'medium' | 'heavy' | 'notificationSuccess' = 'light') => {
     if (Platform.OS === 'web') return;
@@ -155,7 +160,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         ? ringPlayer
         : cue === 'addMinuteVoice'
           ? addMinuteVoicePlayer
-          : promptPlayer;
+          : cue === 'subtractMinuteVoice'
+            ? subtractMinuteVoicePlayer
+            : promptPlayer;
     player.muted = false;
     player.volume = 1;
     const play = async () => {
@@ -176,7 +183,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         }
       }, 120);
     });
-  }, [addMinuteVoicePlayer, ensureAudioSessionActive, promptPlayer, ringPlayer, soundEnabled, tickPlayer]);
+  }, [subtractMinuteVoicePlayer, addMinuteVoicePlayer, ensureAudioSessionActive, promptPlayer, ringPlayer, soundEnabled, tickPlayer]);
 
   const playActionSound = useCallback((action: TimerActionSound) => {
     const cue = getTimerActionSoundCue(soundEnabled, action);
@@ -218,7 +225,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const previousDisplayedSeconds = previousDisplayedSecondsRef.current;
-    if (shouldPlayTimerTick(soundEnabled, running, previousDisplayedSeconds, displayedSeconds)) {
+    if (Date.now() >= tickSuppressedUntilRef.current && shouldPlayTimerTick(soundEnabled, running, previousDisplayedSeconds, displayedSeconds)) {
       playTimerSound('tick');
     }
     previousDisplayedSecondsRef.current = displayedSeconds;
@@ -293,6 +300,24 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setRemainingMs((value) => value + minuteMs);
   }, [endsAt, playActionSound, running, scheduleEndNotifier, soundEnabled, triggerHaptic]);
 
+  const subtractMinute = useCallback(() => {
+    triggerHaptic('light');
+    if (running && endsAt) {
+      // Let the 1.94-second voice finish before resuming countdown ticks.
+      tickSuppressedUntilRef.current = Date.now() + 2200;
+      playActionSound('subtractMinute');
+      const currentTime = Date.now();
+      const nextEnd = new Date(Math.max(endsAt.getTime() - minuteMs, currentTime));
+      setNow(currentTime);
+      setEndsAt(nextEnd);
+      setRemainingMs(Math.max(nextEnd.getTime() - currentTime, 0));
+      subtractMinuteTimerForeground(nextEnd.getTime(), soundEnabled);
+      scheduleEndNotifier(nextEnd);
+      return;
+    }
+    setRemainingMs((value) => Math.max(value - minuteMs, 0));
+  }, [endsAt, playActionSound, running, scheduleEndNotifier, soundEnabled, triggerHaptic]);
+
   const toggleSound = useCallback(() => {
     triggerHaptic('light');
     const next = !soundEnabled;
@@ -320,8 +345,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     pause,
     reset,
     addMinute,
+    subtractMinute,
     toggleSound,
-  }), [addMinute, applyPreset, durationInput, endsAt, pause, remainingMs, reset, running, soundEnabled, start, startedAt, toggleSound, totalMs]);
+  }), [subtractMinute, addMinute, applyPreset, durationInput, endsAt, pause, remainingMs, reset, running, soundEnabled, start, startedAt, toggleSound, totalMs]);
 
   return <TimerContext.Provider value={value}>{children}</TimerContext.Provider>;
 }

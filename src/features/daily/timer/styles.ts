@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 import { colors, radius, shadow, spacing } from '@/src/shared/theme';
 
@@ -6,9 +6,14 @@ export const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.xxl,
+    paddingTop: Platform.OS === 'android' ? spacing.md : spacing.xxl,
     paddingBottom: spacing.xxl,
     backgroundColor: colors.bg,
+  },
+  topActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   soundToggle: {
     alignItems: 'center',
@@ -113,6 +118,7 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
   },
   presets: {
+    justifyContent: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
@@ -141,7 +147,7 @@ export const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
-    gap: spacing.md,
+    gap: spacing.sm,
     marginTop: 'auto',
   },
   primaryAction: {
@@ -160,7 +166,7 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
   },
   secondaryAction: {
-    width: 60,
+    width: 72,
     height: 60,
     borderRadius: radius.xl,
     backgroundColor: colors.surface,

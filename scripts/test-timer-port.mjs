@@ -22,7 +22,7 @@ assert.match(rootLayout, /<TimerProvider>[\s\S]*<Stack/, 'TimerProvider should w
 assert.match(indexRoute, /<TimerScreen\s*\/>/, 'root screen should render TimerScreen directly');
 assert.doesNotMatch(indexRoute, /onBack/, 'standalone Timer app should not show a no-op title-bar back button');
 assert.doesNotMatch(screen, /useAudioPlayer|setInterval|setAudioModeAsync/, 'TimerScreen should not own clock or audio runtime');
-assert.match(provider, /const minutePresets = \[5, 10, 25, 40\]/, 'minute presets should match SMAPP');
+assert.match(provider, /const minutePresets = \[3, 5, 8, 10\]/, 'minute presets should be 3, 5, 8 and 10 minutes');
 assert.match(provider, /useState\('5'\)/, 'default duration input should be 5 minutes');
 assert.match(provider, /useState\(5 \* minuteMs\)/, 'default remaining time should be 5 minutes');
 assert.match(provider, /useAudioPlayer\(require\('\.\.\/\.\.\/\.\.\/\.\.\/assets\/sounds\/timer-prompt\.wav'\)/, 'prompt audio path should match copied SMAPP structure');

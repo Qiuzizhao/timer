@@ -1,10 +1,11 @@
-export type TimerActionSound = 'start' | 'addMinute' | 'finish';
-export type TimerSoundCue = 'prompt' | 'tick' | 'ring' | 'addMinuteVoice';
+export type TimerActionSound = 'start' | 'subtractMinute' | 'addMinute' | 'finish';
+export type TimerSoundCue = 'prompt' | 'tick' | 'ring' | 'subtractMinuteVoice' | 'addMinuteVoice';
 
 export const DEFAULT_TIMER_SOUND_ENABLED = true;
 
 export function getTimerActionSoundCue(soundEnabled: boolean, action: TimerActionSound): TimerSoundCue | null {
   if (!soundEnabled) return null;
+  if (action === 'subtractMinute') return 'subtractMinuteVoice';
   if (action === 'addMinute') return 'addMinuteVoice';
   return action === 'finish' ? 'ring' : 'prompt';
 }

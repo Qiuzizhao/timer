@@ -32,6 +32,7 @@ export function TimerScreen({ onBack }: { onBack?: () => void }) {
     pause,
     reset,
     addMinute,
+    subtractMinute,
     toggleSound,
   } = useTimer();
 
@@ -68,6 +69,10 @@ export function TimerScreen({ onBack }: { onBack?: () => void }) {
   return (
     <ScreenShell title="计时器" onBack={onBack}>
       <View style={styles.content}>
+        <View style={styles.topActions}>
+          <Pressable onPress={reset} accessibilityRole="button" accessibilityLabel="重置计时器" style={styles.soundToggle}>
+            <Ionicons name="refresh-outline" size={24} color={colors.textSoft} />
+          </Pressable>
         <Pressable
           accessibilityLabel={soundEnabled ? '关闭计时器声音' : '开启计时器声音'}
           accessibilityRole="button"
@@ -76,6 +81,7 @@ export function TimerScreen({ onBack }: { onBack?: () => void }) {
         >
           <Ionicons name={soundEnabled ? 'volume-high' : 'volume-mute'} size={21} color={soundEnabled ? '#fff' : colors.textSoft} />
         </Pressable>
+        </View>
 
         <View style={styles.timerCircleContainer}>
           <Animated.View style={[styles.glow, { backgroundColor: themeColors.primarySoft }, animatedGlow]} />
@@ -109,16 +115,16 @@ export function TimerScreen({ onBack }: { onBack?: () => void }) {
         </View>
 
         <View style={styles.actions}>
-          <Pressable onPress={reset} style={styles.secondaryAction}>
-            <Ionicons name="refresh-outline" size={24} color={colors.textSoft} />
+          <Pressable onPress={subtractMinute} accessibilityRole="button" accessibilityLabel="减时1分钟" style={styles.secondaryAction}>
+            <Ionicons name="remove" size={24} color={colors.textSoft} />
           </Pressable>
-          
+
           <Pressable onPress={running ? pause : start} style={[styles.primaryAction, { backgroundColor: themeColors.primary }]}>
             <Ionicons name={running ? 'pause' : 'play'} size={24} color="#fff" />
             <Text style={styles.primaryActionText}>{running ? '暂停' : '开始计时'}</Text>
           </Pressable>
 
-          <Pressable onPress={addMinute} style={styles.secondaryAction}>
+          <Pressable onPress={addMinute} accessibilityRole="button" accessibilityLabel="加时1分钟" style={styles.secondaryAction}>
             <Ionicons name="add" size={24} color={colors.textSoft} />
           </Pressable>
         </View>

@@ -35,6 +35,7 @@ class TimerForegroundService : Service() {
     const val NOTIFICATION_ID = 20260904
     const val ACTION_START = "com.qiuzizhao.timer.START"
     const val ACTION_UPDATE = "com.qiuzizhao.timer.UPDATE"
+    const val ACTION_SUBTRACT_MINUTE = "com.qiuzizhao.timer.SUBTRACT_MINUTE"
     const val ACTION_ADD_MINUTE = "com.qiuzizhao.timer.ADD_MINUTE"
     const val ACTION_STOP = "com.qiuzizhao.timer.STOP"
     const val EXTRA_ENDS_AT = "endsAt"
@@ -45,12 +46,14 @@ class TimerForegroundService : Service() {
   private var tickSound = 0
   private var ringSound = 0
   private var promptSound = 0
+  private var subtractMinuteSound = 0
   private var addMinuteSound = 0
 
   private val handler = Handler(Looper.getMainLooper())
   @Volatile private var running = false
   private var endsAt = 0L
   private var soundEnabled = true
+  private var tickSuppressedUntil = 0L
 
   private val tickRunnable = object : Runnable {
     override fun run() {
@@ -63,7 +66,7 @@ class TimerForegroundService : Service() {
         stopSelf()
         return
       }
-      if (soundEnabled) play(tickSound)
+      if (soundEnabled && System.currentTimeMillis() >= tickSuppressedUntil) play(tickSound)
       handler.postDelayed(this, 1000L)
     }
   }
@@ -79,6 +82,7 @@ class TimerForegroundService : Service() {
     tickSound = soundPool.load(this, R.raw.timer_tick, 1)
     ringSound = soundPool.load(this, R.raw.timer_ring, 1)
     promptSound = soundPool.load(this, R.raw.timer_prompt, 1)
+    subtractMinuteSound = soundPool.load(this, R.raw.timer_subtract_minute_voice, 1)
     addMinuteSound = soundPool.load(this, R.raw.timer_add_minute_voice, 1)
   }
 
@@ -102,6 +106,12 @@ class TimerForegroundService : Service() {
         endsAt = intent.getLongExtra(EXTRA_ENDS_AT, endsAt)
         soundEnabled = intent.getBooleanExtra(EXTRA_SOUND, soundEnabled)
         if (soundEnabled) play(addMinuteSound)
+      }
+      ACTION_SUBTRACT_MINUTE -> {
+        endsAt = intent.getLongExtra(EXTRA_ENDS_AT, endsAt)
+        soundEnabled = intent.getBooleanExtra(EXTRA_SOUND, soundEnabled)
+        tickSuppressedUntil = System.currentTimeMillis() + 2200L
+        if (soundEnabled) play(subtractMinuteSound)
       }
       else -> {
         if (!running) startForeground(NOTIFICATION_ID, buildNotification())
@@ -208,6 +218,15 @@ class TimerForegroundModule(reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
+  fun subtractMinute(endsAt: Double, soundEnabled: Boolean) {
+    reactApplicationContext.startService(
+      serviceIntent(TimerForegroundService.ACTION_SUBTRACT_MINUTE)
+        .putExtra(TimerForegroundService.EXTRA_ENDS_AT, endsAt.toLong())
+        .putExtra(TimerForegroundService.EXTRA_SOUND, soundEnabled)
+    )
+  }
+
+  @ReactMethod
   fun stop() {
     reactApplicationContext.stopService(
       serviceIntent(TimerForegroundService.ACTION_STOP)
@@ -289,6 +308,7 @@ function withServiceSources(config) {
         ['timer-tick.wav', 'timer_tick.wav'],
         ['timer-ring.wav', 'timer_ring.wav'],
         ['timer-prompt.wav', 'timer_prompt.wav'],
+        ['timer-subtract-minute-voice.wav', 'timer_subtract_minute_voice.wav'],
         ['timer-add-minute-voice.mp3', 'timer_add_minute_voice.mp3'],
       ];
       for (const [from, to] of mapping) {
