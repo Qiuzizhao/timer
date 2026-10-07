@@ -9,6 +9,10 @@ export const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? spacing.md : spacing.xxl,
     paddingBottom: spacing.xxl,
     backgroundColor: colors.bg,
+    justifyContent: 'space-between',
+  },
+  hero: {
+    gap: spacing.lg,
   },
   topActions: {
     flexDirection: 'row',
@@ -31,7 +35,6 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: spacing.sm,
-    marginBottom: spacing.xl,
     position: 'relative',
   },
   timerCircle: {
@@ -120,12 +123,12 @@ export const styles = StyleSheet.create({
   presets: {
     justifyContent: 'center',
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   presetButton: {
+    flex: 1,
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.sm,
     paddingVertical: spacing.md,
     borderRadius: radius.md,
     backgroundColor: colors.surfaceMuted,
@@ -133,7 +136,6 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     justifyContent: 'center',
     minHeight: 46,
-    minWidth: 62,
   },
   presetButtonSelected: {
   },
@@ -148,7 +150,6 @@ export const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginTop: 'auto',
   },
   primaryAction: {
     flex: 2,

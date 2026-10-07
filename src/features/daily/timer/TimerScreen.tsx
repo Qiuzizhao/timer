@@ -67,7 +67,7 @@ export function TimerScreen({ onBack }: { onBack?: () => void }) {
   }));
 
   return (
-    <ScreenShell title="计时器" onBack={onBack}>
+    <ScreenShell title="德育计时器" onBack={onBack}>
       <View style={styles.content}>
         <View style={styles.topActions}>
           <Pressable onPress={reset} accessibilityRole="button" accessibilityLabel="重置计时器" style={styles.soundToggle}>
@@ -83,34 +83,36 @@ export function TimerScreen({ onBack }: { onBack?: () => void }) {
         </Pressable>
         </View>
 
-        <View style={styles.timerCircleContainer}>
-          <Animated.View style={[styles.glow, { backgroundColor: themeColors.primarySoft }, animatedGlow]} />
-          <View style={styles.timerCircle}>
-            <Animated.Text style={[styles.timeText, animatedText]}>
-              {formatDuration(remainingMs)}
-            </Animated.Text>
-          </View>
-        </View>
-
-        <View style={styles.panel}>
-          <View style={styles.presets}>
-            {minutePresets.map((minutes) => {
-              const selected = durationInput === String(minutes);
-              return (
-                <Pressable
-                  key={minutes}
-                  onPress={() => applyPreset(minutes)}
-                  style={[styles.presetButton, selected && styles.presetButtonSelected, selected && { backgroundColor: colorWithAlpha(themeColors.primary), borderColor: themeColors.primary }, running && styles.disabled]}
-                >
-                  <Text style={[styles.presetText, selected && styles.presetTextSelected, selected && { color: themeColors.primary }]}>{minutes}m</Text>
-                </Pressable>
-              );
-            })}
+        <View style={styles.hero}>
+          <View style={styles.timerCircleContainer}>
+            <Animated.View style={[styles.glow, { backgroundColor: themeColors.primarySoft }, animatedGlow]} />
+            <View style={styles.timerCircle}>
+              <Animated.Text style={[styles.timeText, animatedText]}>
+                {formatDuration(remainingMs)}
+              </Animated.Text>
+            </View>
           </View>
 
-          <View style={styles.timeInfoGrid}>
-            <Info label="开始时间" value={startedAt ? formatClock(startedAt) : '--:--'} />
-            <Info label="预计结束" value={endsAt ? formatClock(endsAt) : '--:--'} />
+          <View style={styles.panel}>
+            <View style={styles.presets}>
+              {minutePresets.map((minutes) => {
+                const selected = durationInput === String(minutes);
+                return (
+                  <Pressable
+                    key={minutes}
+                    onPress={() => applyPreset(minutes)}
+                    style={[styles.presetButton, selected && styles.presetButtonSelected, selected && { backgroundColor: colorWithAlpha(themeColors.primary), borderColor: themeColors.primary }, running && styles.disabled]}
+                  >
+                    <Text style={[styles.presetText, selected && styles.presetTextSelected, selected && { color: themeColors.primary }]}>{minutes}m</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <View style={styles.timeInfoGrid}>
+              <Info label="开始时间" value={startedAt ? formatClock(startedAt) : '--:--'} />
+              <Info label="预计结束" value={endsAt ? formatClock(endsAt) : '--:--'} />
+            </View>
           </View>
         </View>
 
