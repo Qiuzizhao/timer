@@ -138,7 +138,7 @@ export function TimerScreen({ onBack }: { onBack?: () => void }) {
   );
 
   return (
-    <ScreenShell title="德育计时器" onBack={onBack}>
+    <ScreenShell title="静坐计时器" onBack={onBack}>
       {desktop ? (
         <View style={[styles.content, styles.desktopContent]}>
           <View style={styles.desktopLayout}>
