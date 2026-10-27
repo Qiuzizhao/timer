@@ -14,6 +14,28 @@ export const styles = StyleSheet.create({
   hero: {
     gap: spacing.lg,
   },
+  desktopContent: {
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  desktopLayout: {
+    width: '100%',
+    maxWidth: 1256,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 48,
+  },
+  desktopTimer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+  },
+  desktopControls: {
+    width: 380,
+    gap: spacing.xl,
+  },
   topActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
