@@ -4,6 +4,9 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>静坐计时器</title>
+<link rel="manifest" href="./manifest.json" />
+<meta name="theme-color" content="#B8860B" />
+<script src="./desktop-install.js" defer></script>
 <style>
   :root {
     --bg: #F8F9FA;
@@ -78,6 +81,27 @@
   .icon-btn.primary { background: var(--primary); color: #fff; }
   .icon-btn.primary:hover { background: var(--primary-dark); }
   .icon-btn .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+  #desktopInstallBtn { display: none; }
+  @media (min-width: 768px) and (hover: hover) {
+    #desktopInstallBtn:not([hidden]) { display: inline-flex; }
+  }
+  @media (display-mode: standalone) {
+    #desktopInstallBtn { display: none !important; }
+  }
+  .install-help {
+    width: min(460px, calc(100vw - 32px));
+    padding: 28px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow);
+  }
+  .install-help::backdrop { background: rgba(0, 0, 0, .4); }
+  .install-help h2 { margin: 0 0 16px; font-size: 20px; }
+  .install-help p { line-height: 1.7; color: var(--text-soft); }
+  .install-help a { color: var(--primary-dark); }
+  .install-help form { display: flex; justify-content: flex-end; margin-top: 20px; }
 
   /* ---------------- Normal mode ---------------- */
   .normal-view {
@@ -414,8 +438,14 @@
   <header class="appbar">
     <span class="brand">⏱ 静坐计时器</span>
     <div class="spacer"></div>
+    <button id="desktopInstallBtn" class="icon-btn" type="button">添加到桌面</button>
     <button id="castToggle" class="icon-btn primary"><span class="dot"></span>大屏模式</button>
   </header>
+  <dialog id="desktopInstallHelp" class="install-help" aria-labelledby="desktopInstallTitle">
+    <h2 id="desktopInstallTitle">添加到桌面</h2>
+    <p id="desktopInstallInstructions">点击地址栏的安装图标，或在浏览器菜单中查找“安装此网站”“安装应用”或“创建快捷方式”。不同浏览器的选项名称可能略有不同。</p>
+    <form method="dialog"><button class="icon-btn primary" type="submit">知道了</button></form>
+  </dialog>
 
   <!-- NORMAL MODE -->
   <main class="normal-view">
@@ -941,7 +971,7 @@
 
   // keyboard shortcuts
   document.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.isContentEditable) return;
+    if (document.querySelector('dialog[open]') || e.target.closest('button, input, textarea, select') || e.target.isContentEditable) return;
     const k = e.key.toLowerCase();
     if (k === ' ' || k === 'enter') { e.preventDefault(); state.running ? pause() : start(); }
     else if (k === 'r') reset();
