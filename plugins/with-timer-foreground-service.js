@@ -304,12 +304,14 @@ function withServiceSources(config) {
       const sounds = path.join(projectRoot, 'assets', 'sounds');
       const raw = path.join(root, 'app', 'src', 'main', 'res', 'raw');
       fs.mkdirSync(raw, { recursive: true });
+      // Remove the legacy recording when regenerating an existing native project.
+      fs.rmSync(path.join(raw, 'timer_add_minute_voice.mp3'), { force: true });
       const mapping = [
         ['timer-tick.wav', 'timer_tick.wav'],
         ['timer-ring.wav', 'timer_ring.wav'],
         ['timer-prompt.wav', 'timer_prompt.wav'],
         ['timer-subtract-minute-voice.wav', 'timer_subtract_minute_voice.wav'],
-        ['timer-add-minute-voice.mp3', 'timer_add_minute_voice.mp3'],
+        ['timer-add-minute-voice.wav', 'timer_add_minute_voice.wav'],
       ];
       for (const [from, to] of mapping) {
         const src = path.join(sounds, from);

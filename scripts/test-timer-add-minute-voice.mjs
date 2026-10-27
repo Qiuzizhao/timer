@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
 
 const source = await readFile('src/features/daily/timer/TimerProvider.tsx', 'utf8');
 const voiceAsset = await readFile('assets/sounds/timer-add-minute-voice.wav');
@@ -55,5 +58,46 @@ assert.match(
   /const addMinute = useCallback\(\(\) => \{[\s\S]*if \(running && endsAt\) \{[\s\S]*playActionSound\('addMinute'\)/,
   'timer should play the add-minute voice only after the timer has started',
 );
+
+// Exercise Android resource generation, including migration from the old MP3.
+fs.mkdirSync('.tmp', { recursive: true });
+const nativeRoot = fs.mkdtempSync(path.resolve('.tmp/timer-voice-'));
+try {
+  const raw = path.join(nativeRoot, 'app/src/main/res/raw');
+  fs.mkdirSync(raw, { recursive: true });
+  fs.writeFileSync(path.join(raw, 'timer_add_minute_voice.mp3'), 'legacy recording');
+  let generateSources;
+  const module = { exports: {} };
+  const pluginSource = await readFile('plugins/with-timer-foreground-service.js', 'utf8');
+  vm.runInNewContext(pluginSource, {
+    module,
+    require(name) {
+      if (name === 'fs') return fs;
+      if (name === 'path') return path;
+      if (name === '@expo/config-plugins') return {
+        withAndroidManifest: (config) => config,
+        withMainApplication: (config) => config,
+        withDangerousMod(config, [, callback]) {
+          generateSources = callback;
+          return config;
+        },
+      };
+      throw new Error(`Unexpected module: ${name}`);
+    },
+  });
+  module.exports({});
+  const config = { modRequest: { platformProjectRoot: nativeRoot, projectRoot: process.cwd() } };
+  await generateSources(config);
+  await generateSources(config);
+  assert.deepEqual(
+    await readFile(path.join(raw, 'timer_add_minute_voice.wav')),
+    voiceAsset,
+    'Android must package the exact same add-minute recording as iOS',
+  );
+  assert.equal(fs.existsSync(path.join(raw, 'timer_add_minute_voice.mp3')), false,
+    'prebuild must remove the old Android recording');
+} finally {
+  fs.rmSync(nativeRoot, { recursive: true, force: true });
+}
 
 console.log('timer add-minute voice checks passed');
