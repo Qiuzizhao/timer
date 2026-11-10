@@ -1,11 +1,13 @@
-const CACHE_PREFIX = 'quiet-timer-';
+const scope = new URL(self.registration.scope);
+// Cache Storage is shared by every service worker on this origin.
+const CACHE_PREFIX = scope.pathname === '/' ? 'quiet-timer-' : `quiet-timer:${scope.pathname}:`;
 const CACHE_NAME = `${CACHE_PREFIX}v1`;
 const ASSETS = [
   './index.html', './desktop-install.js', './offline-cache.js', './manifest.json',
   './icons/timer-192.png', './icons/timer-512.png',
   './sounds/timer-prompt.wav', './sounds/timer-tick.wav', './sounds/timer-ring.wav',
   './sounds/timer-add-minute-voice.wav', './sounds/timer-subtract-minute-voice-yunyang-10.wav',
-].map(path => new URL(path, self.registration.scope).href);
+].map(path => new URL(path, scope).href);
 const INDEX = ASSETS[0];
 
 self.addEventListener('install', event => {
@@ -42,9 +44,8 @@ async function audioRange(response, range) {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  const scope = new URL(self.registration.scope);
   if (url.origin !== scope.origin) return;
-  // Root and index.html share one copy, including visits with query parameters.
+  // The scope URL and index.html share one copy, including visits with query parameters.
   const key = url.pathname === scope.pathname || url.pathname === new URL(INDEX).pathname
     ? INDEX : new URL(url.pathname, url.origin).href;
   if (!ASSETS.includes(key)) return;

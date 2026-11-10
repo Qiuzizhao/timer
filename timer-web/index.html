@@ -197,6 +197,41 @@
   }
   .label-soft { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
 
+  .duration-heading { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .duration-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .duration-field { display: flex; align-items: center; gap: 8px; color: var(--text-soft); font-weight: 700; }
+  .duration-wheel {
+    --row-height: 28px;
+    flex: 1;
+    min-width: 0;
+    height: calc(3 * var(--row-height));
+    padding-block: var(--row-height);
+    overflow: hidden auto;
+    overscroll-behavior-y: contain;
+    scroll-snap-type: y mandatory;
+    scroll-padding-block: var(--row-height);
+    scrollbar-width: none;
+    border-radius: 12px;
+    background: linear-gradient(var(--surface-muted) 33.333%, var(--primary-soft) 33.333% 66.667%, var(--surface-muted) 66.667%);
+    cursor: grab;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .duration-wheel::-webkit-scrollbar { display: none; }
+  .duration-wheel:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .duration-wheel.dragging { scroll-snap-type: none; cursor: grabbing; }
+  .duration-wheel[aria-disabled="true"] { overflow: hidden; opacity: .5; cursor: default; }
+  .duration-option {
+    display: grid;
+    place-items: center;
+    height: var(--row-height);
+    scroll-snap-align: center;
+    color: var(--muted);
+    font-size: 15px;
+    font-variant-numeric: tabular-nums;
+  }
+  .duration-option.selected { color: var(--primary-dark); font-size: 22px; font-weight: 800; }
+
   .presets { display: flex; gap: 10px; flex-wrap: nowrap; }
   .preset {
     flex: 1 1 0; min-width: 0; height: 58px;
@@ -232,8 +267,9 @@
     box-shadow: var(--shadow); color: var(--text-soft); font-size: 22px;
   }
   .act.main { flex: 1; background: var(--primary); color: #fff; box-shadow: var(--shadow); }
-  .act.main:hover { background: var(--primary-dark); }
+  .act.main:hover:not(:disabled) { background: var(--primary-dark); }
   .act .icon { font-size: 22px; line-height: 1; }
+  .act:disabled, .cast-btn:disabled { opacity: .5; cursor: not-allowed; }
 
   /* ---------------- Cast mode ---------------- */
   .cast-view {
@@ -403,6 +439,8 @@
     .dial .glow { inset: -14px; }
     .panel { padding: 16px; gap: 14px; }
     .actions { gap: 8px; }
+    .act.secondary { width: clamp(44px, 15vw, 64px); }
+    .act.main { font-size: 16px; white-space: nowrap; }
   }
   /* Desktop: move the existing controls beside the timer without restyling buttons. */
   @media (min-width: 960px) {
@@ -471,6 +509,24 @@
 
       <div class="panel">
         <div>
+          <div class="duration-heading">
+            <span class="label-soft">设置时长</span>
+            <span class="label-soft" id="durationHint">上下滑动</span>
+          </div>
+          <div class="duration-picker" role="group" aria-label="设置时长">
+            <div class="duration-field">
+              <div class="duration-wheel" id="minuteWheel" role="spinbutton" tabindex="0"
+                aria-label="分钟" aria-describedby="durationHint" aria-valuemin="0"></div>
+              <span aria-hidden="true">分</span>
+            </div>
+            <div class="duration-field">
+              <div class="duration-wheel" id="secondWheel" role="spinbutton" tabindex="0"
+                aria-label="秒钟" aria-describedby="durationHint" aria-valuemin="0"></div>
+              <span aria-hidden="true">秒</span>
+            </div>
+          </div>
+        </div>
+        <div>
           <div class="label-soft" style="margin-bottom:10px">快捷预设</div>
           <div class="presets" id="presets">
             <button class="preset" data-min="5">5m</button>
@@ -531,11 +587,14 @@
   'use strict';
 
   const $ = (s) => document.querySelector(s);
-  const minuteMs = 60000;
-  const presets = [5, 10, 25, 40];
+  const secondMs = 1000;
+  const secondsPerMinute = 60;
+  const minuteMs = secondsPerMinute * secondMs;
+  const maxMinutes = 999;
+  const maxDuration = (maxMinutes + 1) * secondsPerMinute - 1;
 
   const state = {
-    durationInput: '5',
+    durationSeconds: 5 * secondsPerMinute,
     remainingMs: 5 * minuteMs,
     running: false,
     startedAt: null,
@@ -637,8 +696,7 @@
 
   /* ---------- helpers ---------- */
   function totalMs() {
-    const m = Number(state.durationInput);
-    return Number.isFinite(m) && m > 0 ? Math.round(m * minuteMs) : 0;
+    return state.durationSeconds * secondMs;
   }
   function fmtTime(ms) {
     const s = Math.ceil(ms / 1000);
@@ -697,11 +755,11 @@
   }
 
   function start() {
-    let base = state.endsAt ? state.remainingMs : totalMs();
-    if (base <= 0) base = totalMs();
+    const hasRemaining = state.endsAt !== null && state.remainingMs > 0;
+    const base = hasRemaining ? state.remainingMs : totalMs();
     if (base <= 0) return;
     const now = Date.now();
-    if (!state.endsAt) state.startedAt = new Date(now);
+    if (!hasRemaining || state.finishPlayed) state.startedAt = new Date(now);
     state.endsAt = new Date(now + base);
     state.remainingMs = base;
     state.running = true;
@@ -715,7 +773,12 @@
 
   function pause() {
     if (!state.running) return;
-    state.remainingMs = Math.max(state.endsAt.getTime() - Date.now(), 0);
+    const remaining = state.endsAt.getTime() - Date.now();
+    if (remaining <= 0) {
+      finish();
+      return;
+    }
+    state.remainingMs = remaining;
     state.running = false;
     stopInterval();
     render();
@@ -743,7 +806,7 @@
       state.remainingMs += minuteMs;
     } else {
       playCue('plus');
-      setDuration(curMinutes() + 1);
+      setDuration(state.durationSeconds + secondsPerMinute);
       return;
     }
     hideDone();
@@ -766,27 +829,23 @@
         playCue('limit');
       }
     } else {
-      if (curMinutes() > 1) { playCue('minus'); setDuration(curMinutes() - 1); }
-      else { playCue('limit'); }
+      if (state.durationSeconds > secondsPerMinute) {
+        playCue('minus');
+        setDuration(state.durationSeconds - secondsPerMinute);
+      } else {
+        playCue('limit');
+      }
+      return;
     }
     hideDone();
     render();
   }
 
-  function curMinutes() {
-    const m = Number(state.durationInput);
-    return Number.isFinite(m) ? Math.round(m) : 0;
-  }
-  function setDuration(min) {
+  function setDuration(seconds, syncWheels = true) {
     if (state.running) return;
-    min = Math.max(1, Math.min(999, Math.round(min)));
-    state.durationInput = String(min);
-    state.remainingMs = Math.round(min * minuteMs);
-    state.startedAt = null;
-    state.endsAt = null;
-    state.lastTickSec = Math.ceil(state.remainingMs / 1000);
-    hideDone();
-    render();
+    state.durationSeconds = Math.max(0, Math.min(maxDuration, seconds));
+    if (syncWheels) durationWheels.forEach(({ sync }) => sync());
+    reset();
   }
 
   function update() {
@@ -843,15 +902,76 @@
     const shift = m.width / 2 - inkCenter;
     if (Math.abs(shift) > 0.5) el.style.transform = `translateX(${shift.toFixed(1)}px)`;
   }
-  /* ---------- preset / custom input ---------- */
-  function applyPreset(min) {
-    if (state.running) return;
-    state.durationInput = String(min);
-    state.remainingMs = min * minuteMs;
-    state.startedAt = null;
-    state.endsAt = null;
-    state.lastTickSec = Math.ceil(state.remainingMs / 1000);
-    render();
+  /* ---------- duration wheels ---------- */
+  function createDurationWheel(wheel, unit, max) {
+    const options = Array.from({ length: max + 1 }, (_, value) => {
+      const option = document.createElement('span');
+      option.className = 'duration-option';
+      option.setAttribute('aria-hidden', 'true');
+      option.textContent = pad(value);
+      return option;
+    });
+    wheel.append(...options);
+    wheel.setAttribute('aria-valuemax', max);
+    const step = options[0].offsetHeight;
+    const clamp = value => Math.max(0, Math.min(max, value));
+    const current = () => Math.floor(state.durationSeconds / unit) % (max + 1);
+    const scrolledValue = () => clamp(Math.round(wheel.scrollTop / step));
+    let highlighted;
+
+    function highlight(value) {
+      if (value === highlighted) return;
+      options[highlighted]?.classList.remove('selected');
+      options[value].classList.add('selected');
+      wheel.setAttribute('aria-valuenow', value);
+      highlighted = value;
+    }
+
+    function sync() {
+      const value = current();
+      wheel.scrollTop = value * step;
+      highlight(value);
+    }
+
+    wheel.addEventListener('scroll', () => {
+      if (state.running || document.body.classList.contains('casting')) return;
+      const value = scrolledValue();
+      if (value !== current()) {
+        setDuration(state.durationSeconds + (value - current()) * unit, false);
+      }
+      highlight(value);
+    });
+
+    let drag = null;
+    wheel.addEventListener('pointerdown', (e) => {
+      if (state.running || e.pointerType !== 'mouse' || e.button !== 0) return;
+      wheel.focus({ preventScroll: true });
+      wheel.setPointerCapture(e.pointerId);
+      drag = { y: e.clientY, top: wheel.scrollTop };
+      wheel.classList.add('dragging');
+    });
+    wheel.addEventListener('pointermove', (e) => {
+      if (drag && !state.running) wheel.scrollTop = drag.top + drag.y - e.clientY;
+    });
+    wheel.addEventListener('lostpointercapture', () => {
+      if (!drag) return;
+      const value = scrolledValue();
+      drag = null;
+      wheel.classList.remove('dragging');
+      wheel.scrollTop = value * step;
+    });
+
+    const keyOffsets = { ArrowUp: 1, ArrowDown: -1, PageUp: 10, PageDown: -10, Home: -max, End: max };
+    wheel.addEventListener('keydown', (e) => {
+      const offset = keyOffsets[e.key];
+      if (!Number.isFinite(offset) || state.running) return;
+      e.preventDefault();
+      const value = current();
+      const next = clamp(value + offset);
+      if (next !== value) setDuration(state.durationSeconds + (next - value) * unit);
+    });
+
+    return { wheel, sync };
   }
 
   /* ---------- render ---------- */
@@ -882,11 +1002,21 @@
 
     // normal: preset highlight
     document.querySelectorAll('.preset').forEach((btn) => {
-      const sel = Number(btn.dataset.min) === Number(state.durationInput);
+      const sel = Number(btn.dataset.min) * secondsPerMinute === state.durationSeconds;
       btn.classList.toggle('selected', sel);
       btn.disabled = state.running;
     });
 
+    const wheelsDisabled = String(state.running);
+    durationWheels.forEach(({ wheel, sync }) => {
+      if (wheel.getAttribute('aria-disabled') === wheelsDisabled) return;
+      wheel.setAttribute('aria-disabled', wheelsDisabled);
+      wheel.tabIndex = state.running ? -1 : 0;
+      sync();
+    });
+    const startDisabled = total === 0;
+    $('#mainBtn').disabled = startDisabled;
+    $('#castMain').disabled = startDisabled;
     $('#timeText').textContent = fmtTime(rem);
     $('#startInfo').textContent = clock(state.startedAt);
     $('#endInfo').textContent = clock(state.endsAt);
@@ -899,7 +1029,7 @@
 
     // cast
     $('#castTime').textContent = fmtTime(rem);
-    $('#castStatus').textContent = state.running ? '进行中' : (rem <= 0 ? '已结束' : (state.endsAt ? '已暂停' : '准备'));
+    $('#castStatus').textContent = state.running ? '进行中' : (state.endsAt ? (rem <= 0 ? '已结束' : '已暂停') : '准备');
     $('#castMainLabel').textContent = state.running ? '暂停' : '开始';
     $('#castMain').querySelector('.ic').textContent = state.running ? '⏸' : '▶';
     $('#castDial').classList.toggle('running', state.running);
@@ -917,6 +1047,7 @@
   }
   function exitCast() {
     document.body.classList.remove('casting');
+    durationWheels.forEach(({ sync }) => sync());
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   }
   function requestFullscreen() {
@@ -967,12 +1098,13 @@
   }
 
   document.querySelectorAll('.preset').forEach((btn) => {
-    btn.addEventListener('click', () => applyPreset(Number(btn.dataset.min)));
+    btn.addEventListener('click', () => setDuration(Number(btn.dataset.min) * secondsPerMinute));
   });
 
   // keyboard shortcuts
   document.addEventListener('keydown', (e) => {
-    if (document.querySelector('dialog[open]') || e.target.closest('button, input, textarea, select') || e.target.isContentEditable) return;
+    if (e.defaultPrevented || document.querySelector('dialog[open]') ||
+      e.target.closest('button, input, textarea, select') || e.target.isContentEditable) return;
     const k = e.key.toLowerCase();
     if (k === ' ' || k === 'enter') { e.preventDefault(); state.running ? pause() : start(); }
     else if (k === 'r') reset();
@@ -1010,6 +1142,10 @@
   });
 
   // init
+  const durationWheels = [
+    createDurationWheel($('#minuteWheel'), secondsPerMinute, maxMinutes),
+    createDurationWheel($('#secondWheel'), 1, secondsPerMinute - 1),
+  ];
   loadSounds();
   setRing($('#dial'), totalMs(), state.remainingMs);
   setRingCast($('#castDial'), totalMs(), state.remainingMs);
