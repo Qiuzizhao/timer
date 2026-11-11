@@ -651,42 +651,58 @@
     voice: 'sounds/timer-add-minute-voice.wav',
     subMinute: 'sounds/timer-subtract-minute-voice-yunyang-10.wav',
   };
-  const audioCache = {};     // HTMLAudio elements (reliable playback on mobile)
+  const useDecodedAudio = location.protocol === 'https:' || location.protocol === 'http:';
+  const soundData = new Map();
+  const decodedSounds = new Map();
+  const mediaSounds = new Map();
+  const playingSounds = new Map();
   let actx = null;
-  function ctx() {
-    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
-    return actx;
-  }
-  function getAudio(src) {
-    if (!audioCache[src]) {
-      const a = new Audio(src);
-      a.preload = 'auto';
-      audioCache[src] = a;
+  let audioReady = null;
+
+  async function fetchSound(cue) {
+    try {
+      const response = await fetch(SOUND_FILES[cue]);
+      return response.ok ? await response.arrayBuffer() : null;
+    } catch {
+      return null;
     }
-    return audioCache[src];
   }
-  // Preload the sound files so the first playback has them cached (less delay).
-  // Note: does NOT create an AudioContext here, so mobile autoplay policy stays ok.
+
   function loadSounds() {
-    Object.keys(SOUND_FILES).forEach((cue) => {
-      const a = getAudio(SOUND_FILES[cue]);
-      if (a.load) a.load();
-    });
+    const decode = useDecodedAudio && (window.AudioContext || window.webkitAudioContext);
+    for (const cue of Object.keys(SOUND_FILES)) {
+      if (decode) soundData.set(cue, fetchSound(cue));
+      else getMedia(cue).load();
+    }
   }
-  // Unlock the AudioContext on the first touch/click (mobile autoplay policy)
-  function unlockAudio() {
-    const c = ctx();
-    if (c.state === 'suspended') c.resume();
-    document.removeEventListener('pointerdown', unlockAudio);
-    document.removeEventListener('touchend', unlockAudio);
-    document.removeEventListener('click', unlockAudio);
+
+  async function decodeSound(context, cue) {
+    const prefetched = soundData.get(cue);
+    soundData.delete(cue);
+    const bytes = (await prefetched) || await fetchSound(cue);
+    return bytes ? context.decodeAudioData(bytes) : null;
   }
-  ['pointerdown', 'touchend', 'click'].forEach((ev) => {
-    document.addEventListener(ev, unlockAudio);
+
+  function unlockAudio(event) {
+    if (!state.soundEnabled || (event && !event.isTrusted)) return;
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    try {
+      // Delayed cues share the context resumed during the user's gesture.
+      if (!actx) actx = new AudioContext();
+      audioReady = actx.state === 'running'
+        ? Promise.resolve(true)
+        : actx.resume().then(() => true, () => false);
+    } catch {
+      audioReady = null;
+    }
+  }
+  ['touchend', 'click', 'keydown'].forEach((ev) => {
+    document.addEventListener(ev, unlockAudio, { capture: true, passive: true });
   });
+
   function tone(freq, dur, delay, vol) {
-    const c = ctx();
-    if (c.state === 'suspended') c.resume();
+    const c = actx;
     const o = c.createOscillator();
     const g = c.createGain();
     o.type = 'sine';
@@ -699,7 +715,8 @@
     o.start(t);
     o.stop(t + (dur || 0.2) + 0.05);
   }
-  function synth(cue) {
+  async function synth(cue) {
+    if (!await audioReady || !state.soundEnabled || actx.state !== 'running') return;
     if (cue === 'prompt') { tone(880, 0.16, 0, 0.28); tone(1174.6, 0.22, 0.14, 0.28); }
     else if (cue === 'tick') { tone(1500, 0.05, 0, 0.5); }
     else if (cue === 'ring') {
@@ -711,17 +728,65 @@
     else if (cue === 'subMinute') { tone(659, 0.15, 0, 0.32); tone(494, 0.18, 0.15, 0.3); tone(392, 0.26, 0.3, 0.28); }
     else if (cue === 'limit') { tone(196, 0.16, 0, 0.3); tone(196, 0.16, 0.2, 0.24); }
   }
-  function playSound(cue) {
-    if (!state.soundEnabled) return;
-    const a = getAudio(SOUND_FILES[cue]);
+  function getMedia(cue) {
+    if (!mediaSounds.has(cue)) mediaSounds.set(cue, new Audio(SOUND_FILES[cue]));
+    return mediaSounds.get(cue);
+  }
+
+  function playMedia(cue) {
     try {
+      const a = getMedia(cue);
       a.currentTime = 0;
       const p = a.play();
       if (p) p.catch(() => synth(cue));
-    } catch (e) {
+    } catch {
       synth(cue);
     }
   }
+
+  async function playSound(cue) {
+    if (!state.soundEnabled) return;
+    if (!useDecodedAudio || !audioReady) {
+      playMedia(cue);
+      return;
+    }
+
+    const context = actx;
+    const previous = playingSounds.get(cue);
+    const playback = { source: null };
+    playingSounds.set(cue, playback);
+    previous?.source?.stop();
+    if (!decodedSounds.has(cue)) {
+      const loading = decodeSound(context, cue).catch(() => null);
+      decodedSounds.set(cue, loading);
+    }
+    const loading = decodedSounds.get(cue);
+    const [buffer, ready] = await Promise.all([loading, audioReady]);
+    if (!buffer && decodedSounds.get(cue) === loading) decodedSounds.delete(cue);
+    if (playingSounds.get(cue) !== playback) return;
+    if (!ready || !buffer || context.state !== 'running') {
+      playingSounds.delete(cue);
+      playMedia(cue);
+      return;
+    }
+
+    const source = context.createBufferSource();
+    playback.source = source;
+    source.buffer = buffer;
+    source.connect(context.destination);
+    source.onended = () => {
+      source.disconnect();
+      if (playingSounds.get(cue) === playback) playingSounds.delete(cue);
+    };
+    source.start();
+  }
+
+  function stopSounds() {
+    for (const playback of playingSounds.values()) playback.source?.stop();
+    playingSounds.clear();
+    for (const audio of mediaSounds.values()) audio.pause();
+  }
+
   function playCue(cue) {
     if (!state.soundEnabled) return;
     if (cue === 'plus' || cue === 'minus' || cue === 'limit') { synth(cue); return; }
@@ -1128,6 +1193,8 @@
 
   function toggleSound() {
     state.soundEnabled = !state.soundEnabled;
+    if (state.soundEnabled) unlockAudio();
+    else stopSounds();
     render();
   }
 
@@ -1154,7 +1221,9 @@
 
   // resume accurate remaining time when tab comes back
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && state.running && state.endsAt) update();
+    if (document.hidden) return;
+    if (actx && actx.state !== 'running') unlockAudio();
+    if (state.running && state.endsAt) update();
   });
 
   /* ---------- lock gestures on touch devices ----------
