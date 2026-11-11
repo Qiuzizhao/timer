@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#f8f9fa">
+  <title>手机遥控 · 静坐计时器</title>
+  <link rel="stylesheet" href="./phone.css">
+  <script src="./connection.js" defer></script>
+  <script src="./phone.js" defer></script>
+</head>
+<body>
+  <main class="remote-screen" aria-label="静坐计时器手机遥控">
+    <header>
+      <h1>◴ 手机遥控</h1>
+      <span id="connection" class="connection" role="status">正在连接</span>
+    </header>
+    <div class="display">
+      <div id="dial" class="dial">
+        <span class="caption">剩余时间</span>
+        <output id="time" role="timer" aria-label="剩余时间">--:--</output>
+        <span id="phase" class="caption" role="status"></span>
+      </div>
+    </div>
+    <div class="actions" role="group" aria-label="倒计时控制">
+      <button type="button" id="subtract" class="adjust" aria-label="减少一分钟" disabled>
+        <span aria-hidden="true">−1</span><span aria-hidden="true">分钟</span>
+      </button>
+      <button type="button" id="toggle" class="main-action" disabled>
+        <span id="action-icon" aria-hidden="true">▷</span><span id="action-label">开始</span>
+      </button>
+      <button type="button" id="add" class="adjust" aria-label="增加一分钟" disabled>
+        <span aria-hidden="true">+1</span><span aria-hidden="true">分钟</span>
+      </button>
+    </div>
+    <p id="notice" class="notice" hidden></p>
+  </main>
+</body>
+</html>

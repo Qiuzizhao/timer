@@ -11,6 +11,7 @@
 - “+1 分钟”（带加时提示音）
 - 音效总开关：启动提示音、每秒滴答、结束响铃、加时提示
 - 显示开始时间与预计结束时间
+- 电脑点击「手机遥控」出码。手机扫码后可查看剩余时间、开始、暂停、加减一分钟
 - 金色主题的圆形表盘 + 进度环
 
 ## 大屏模式
@@ -49,3 +50,18 @@ python -m http.server 8080
 ```
 
 然后在同一局域网的大屏浏览器中访问 `http://本机IP:8080/index.html`。
+
+## 手机遥控服务
+
+手机遥控页位于 `/timer/remote/`。二维码两分钟内有效，一次配对一部手机。电脑页面负责计时和播放音效，手机断线后可在原标签页重连。
+
+服务依赖 Python 3.10+。以下命令在仓库根目录运行。
+
+```bash
+python3 -m venv .tmp/timer-remote-venv
+.tmp/timer-remote-venv/bin/pip install -r timer-web/remote-service/requirements.txt
+.tmp/timer-remote-venv/bin/python -B -m unittest discover -s timer-web/remote-service
+TIMER_ORIGIN=https://计时器站点 .tmp/timer-remote-venv/bin/python -B timer-web/remote-service/server.py
+```
+
+服务监听 `127.0.0.1:8765`，可用 `TIMER_PORT` 调整。静态站点发布计时器页面及 `remote/` 前端文件。Nginx 将 `/timer/remote/ws` 代理到服务的同一路径，并传递 WebSocket Upgrade 头和 `X-Real-IP`。

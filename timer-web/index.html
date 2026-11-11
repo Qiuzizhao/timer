@@ -8,6 +8,8 @@
 <meta name="theme-color" content="#B8860B" />
 <script src="./desktop-install.js" defer></script>
 <script src="./offline-cache.js" defer></script>
+<script src="./remote/connection.js" defer></script>
+<script src="./remote/desktop.js" defer></script>
 <style>
   :root {
     --bg: #F8F9FA;
@@ -106,6 +108,15 @@
   .install-help p { line-height: 1.7; color: var(--text-soft); }
   .install-help a { color: var(--primary-dark); }
   .install-help form { display: flex; justify-content: flex-end; margin-top: 20px; }
+  #remoteToggle[hidden], #remoteQr[hidden], #remoteDialog button[hidden] { display: none; }
+  #remoteToggle[data-connected="true"] .dot { color: var(--success); }
+  #remoteDialog { max-height: calc(100dvh - 24px); overflow: auto; }
+  #remoteDialog form { gap: 8px; flex-wrap: wrap; }
+  #remoteQr { display: block; width: min(100%, 224px); height: auto; margin: 16px auto 0; border-radius: 12px; }
+  #remoteExpiry { margin: 8px 0 0; text-align: center; font-size: 13px; }
+  @media (max-width: 639px) {
+    #remoteToggle { display: none; }
+  }
 
   /* ---------------- Normal mode ---------------- */
   .normal-view {
@@ -514,6 +525,7 @@
     <span class="brand">⏱ 静坐计时器</span>
     <div class="spacer"></div>
     <button id="desktopInstallBtn" class="icon-btn" type="button">添加到桌面</button>
+    <button id="remoteToggle" class="icon-btn" type="button" hidden><span class="dot"></span>手机遥控</button>
     <button id="soundBtn" class="icon-btn sound-toggle" type="button" title="音效开关"
       aria-label="音效开关" aria-pressed="true">🔊</button>
     <button id="castToggle" class="icon-btn primary"><span class="dot"></span>大屏模式</button>
@@ -522,6 +534,17 @@
     <h2 id="desktopInstallTitle">添加到桌面</h2>
     <p id="desktopInstallInstructions">点击地址栏的安装图标，或在浏览器菜单中查找“安装此网站”“安装应用”或“创建快捷方式”。不同浏览器的选项名称可能略有不同。</p>
     <form method="dialog"><button class="icon-btn primary" type="submit">知道了</button></form>
+  </dialog>
+  <dialog id="remoteDialog" class="install-help" aria-labelledby="remoteTitle">
+    <h2 id="remoteTitle">手机遥控</h2>
+    <p id="remoteStatus" role="status"></p>
+    <img id="remoteQr" alt="手机遥控配对二维码" width="224" height="224" hidden>
+    <p id="remoteExpiry" hidden></p>
+    <form method="dialog">
+      <button id="remoteRenew" class="icon-btn" type="button" hidden>重新生成</button>
+      <button id="remoteEnd" class="icon-btn" type="button" hidden>结束遥控</button>
+      <button class="icon-btn primary" type="submit">关闭</button>
+    </form>
   </dialog>
 
   <!-- NORMAL MODE -->
@@ -639,6 +662,7 @@
     finishPlayed: false,
     doneVisible: false,
   };
+  let remote;
 
   const C = 2 * Math.PI * 132;          // normal ring circumference
   const CCAST = 2 * Math.PI * 47;       // cast ring circumference
@@ -1136,6 +1160,26 @@
     setRingCast($('#castDial'), total, rem);
     $('#castMeta').innerHTML = `开始 <b>${clockHM(state.startedAt)}</b> · 结束 <b>${clockHM(state.endsAt)}</b>`;
     fitCastTime();
+    remote?.sync();
+  }
+
+  function readRemoteTimer() {
+    const deadline = state.running ? state.endsAt.getTime() : null;
+    const remainingMs = deadline === null ? state.remainingMs : Math.max(0, deadline - Date.now());
+    return {
+      deadline,
+      remainingMs,
+      durationMs: totalMs(),
+      phase: state.running ? 'running' : state.endsAt ? (remainingMs > 0 ? 'paused' : 'finished') : 'ready',
+      canSubtract: state.endsAt ? remainingMs > 0 : state.durationSeconds > secondsPerMinute,
+    };
+  }
+
+  function applyRemoteCommand(action) {
+    if (action === 'start' && !state.running) start();
+    else if (action === 'pause' && state.running) pause();
+    else if (action === 'add') addMinute();
+    else if (action === 'subtract') minusMinute();
   }
 
   /* ---------- mode toggling ---------- */
@@ -1253,6 +1297,9 @@
   setRing($('#dial'), totalMs(), state.remainingMs);
   setRingCast($('#castDial'), totalMs(), state.remainingMs);
   render();
+  document.addEventListener('DOMContentLoaded', () => {
+    remote = window.setupTimerRemote?.({ readTimer: readRemoteTimer, applyCommand: applyRemoteCommand });
+  });
 })();
 </script>
 </body>
