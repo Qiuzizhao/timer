@@ -1,6 +1,7 @@
 (() => {
   const keyPattern = /^[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{32,64}$/;
   const storageKey = 'timer-remote-credentials';
+  const commandTimeoutMs = 4000;
   const labels = {
     ready: ['等待开始', '开始'],
     running: ['运行中', '暂停'],
@@ -16,6 +17,7 @@
   let online = false;
   let pending;
   let pendingTimer;
+  let feedback = '';
   let error;
   let clock;
 
@@ -101,18 +103,30 @@
     render();
   }
 
+  function receiveResult(id, outcome) {
+    if (!pending || id !== pending) return;
+    clearPending();
+    if (outcome === 'expired') feedback = '操作已过期，请重试。';
+    else if (outcome === 'unchanged') feedback = '电脑上的计时状态已变化，请查看当前时间。';
+  }
+
   function sendCommand(action) {
     if (!online || pending) return;
     const id = crypto.randomUUID();
-    if (!connection.send({ type: 'command', action, id })) {
+    const clock = connection.clockBounds();
+    feedback = '';
+    if (!clock || !connection.send({ type: 'command', action, id, expiresAt: clock.earliest + commandTimeoutMs })) {
       waitForComputer('连接中断', '正在重新连接电脑…');
+      connection.reconnect();
       return;
     }
     pending = id;
     pendingTimer = setTimeout(() => {
-      waitForComputer('正在同步', '正在重新读取电脑上的时间…');
+      feedback = '上一条操作未确认，请以当前时间为准。';
+      waitForComputer('正在同步', feedback);
       connection.reconnect();
-    }, 4000);
+    }, commandTimeoutMs);
+    showConnection('电脑已连接');
     render();
   }
 
@@ -145,20 +159,27 @@
       } else if (message.type === 'peer') {
         waitForComputer(message.connected ? '正在同步' : '电脑已断开',
           message.connected ? '' : '等待电脑重新连接…');
+      } else if (message.type === 'result') {
+        receiveResult(message.id, message.outcome);
+        if (online) showConnection('电脑已连接', feedback);
+        render();
       } else if (message.type === 'state') {
         state = message.state;
         deadline = state.phase === 'running' ? performance.now() + state.remainingMs : undefined;
-        if (message.ack === pending) clearPending();
+        receiveResult(message.ack, message.outcome);
         online = true;
-        showConnection('电脑已连接');
+        showConnection('电脑已连接', feedback);
         render();
       }
     },
     disconnected(terminal, code) {
       if (terminal) {
         save(null);
-        const label = error === 'expired' ? '二维码已失效' : code === 4001 ? '连接已替换' : '遥控已结束';
-        waitForComputer(label, '请在电脑重新生成二维码。');
+        if (error === 'upgrade') waitForComputer('网页已更新', '请刷新电脑和手机上的网页，再重新扫码。');
+        else {
+          const label = error === 'expired' ? '二维码已失效' : code === 4001 ? '连接已替换' : '遥控已结束';
+          waitForComputer(label, '请在电脑重新生成二维码。');
+        }
       } else {
         waitForComputer('连接中断', '正在重新连接电脑…');
       }

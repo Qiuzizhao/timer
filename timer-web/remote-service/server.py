@@ -16,17 +16,25 @@ from qrcode.image.svg import SvgPathFillImage
 PAIR_SECONDS = 120
 RECONNECT_SECONDS = 90
 MAX_ROOMS = 128
+MAX_ROOMS_PER_IP = 8
 MAX_CONNECTIONS = MAX_ROOMS * 3
 MAX_CONNECTIONS_PER_IP = 16
+PROTOCOL_VERSION = 2
+COMMAND_TTL_MS = 4000
 KEY = re.compile(r"[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{32,64}")
 COMMAND_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
 COMMANDS = ("start", "pause", "add", "subtract")
 PHASES = ("ready", "running", "paused", "finished")
+OUTCOMES = ("applied", "expired", "unchanged")
 MAX_TIME_MS = 2**53 - 1
 
 
 def token(room_id):
     return f"{room_id}.{secrets.token_urlsafe(24)}"
+
+
+def clock_ms():
+    return time.monotonic_ns() // 1_000_000
 
 
 def parse_message(message):
@@ -62,6 +70,7 @@ class Room:
     id: str
     host_key: str
     host: web.WebSocketResponse | None
+    creator_ip: str | None
     phone: web.WebSocketResponse | None = None
     phone_key: str | None = None
     pair_key: str | None = None
@@ -84,7 +93,7 @@ class Relay:
         if not room.pair_key or not seconds:
             await send(room.host, {"type": "code", "expiresIn": 0})
             return
-        url = f"{self.origin}/timer/remote/#pair={room.pair_key}"
+        url = f"{self.origin}/timer/remote/?v={PROTOCOL_VERSION}#pair={room.pair_key}"
         qr = qrcode.make(url, image_factory=SvgPathFillImage, box_size=6)
         svg = base64.b64encode(qr.to_string()).decode("ascii")
         await send(room.host, {"type": "code", "qr": svg, "expiresIn": seconds})
@@ -105,13 +114,16 @@ class Relay:
                 if room.host is None and room.host_deadline <= now:
                     await self.end(room)
 
-    def join(self, socket, data):
+    def join(self, socket, data, client):
         kind = data.get("type")
+        if data.get("version") != PROTOCOL_VERSION:
+            return None, None, "upgrade"
         if kind == "create":
-            if len(self.rooms) >= MAX_ROOMS:
+            if (len(self.rooms) >= MAX_ROOMS or
+                    sum(room.creator_ip == client for room in self.rooms.values()) >= MAX_ROOMS_PER_IP):
                 return None, None, "busy"
             room_id = secrets.token_urlsafe(12)
-            room = Room(room_id, token(room_id), socket)
+            room = Room(room_id, token(room_id), socket, client)
             room.new_code()
             self.rooms[room_id] = room
             return room, "host", None
@@ -136,7 +148,7 @@ class Relay:
             if room.phone_key and secrets.compare_digest(phone_key, room.phone_key):
                 previous, room.phone = room.phone, socket
                 return room, "phone", previous
-            if (room.host is not None and room.pair_key and now < room.pair_deadline
+            if (room.pair_key and now < room.pair_deadline
                     and secrets.compare_digest(key, room.pair_key)):
                 room.pair_key = None
                 room.phone_key = phone_key
@@ -148,16 +160,19 @@ class Relay:
     async def announce(self, room, role, socket):
         if role == "host":
             phone = "connected" if room.phone is not None else "disconnected" if room.phone_key else "waiting"
-            await send(socket, {"type": "ready", "key": room.host_key, "phone": phone})
+            await send(socket, {"type": "ready", "key": room.host_key, "phone": phone, "clockMs": clock_ms()})
             if not room.phone_key:
                 await self.send_code(room)
             await send(room.phone, {"type": "peer", "connected": True})
         else:
-            await send(socket, {"type": "ready", "host": room.host is not None})
+            await send(socket, {"type": "ready", "host": room.host is not None, "clockMs": clock_ms()})
             await send(room.host, {"type": "peer", "connected": True})
 
     async def relay(self, room, role, data):
         kind = data.get("type")
+        if kind == "ping":
+            await send(getattr(room, role), {"type": "pong", "clockMs": clock_ms()})
+            return True
         if role == "host":
             if kind == "end":
                 return False
@@ -177,11 +192,18 @@ class Relay:
                     "phase": snapshot["phase"], "remainingMs": times[0],
                     "durationMs": times[1], "canSubtract": snapshot["canSubtract"],
                 }}
-                if valid_id(data.get("ack")):
+                if valid_id(data.get("ack")) and data.get("outcome") in OUTCOMES:
                     message["ack"] = data["ack"]
+                    message["outcome"] = data["outcome"]
                 await send(room.phone, message)
         elif kind == "command" and data.get("action") in COMMANDS and valid_id(data.get("id")):
-            if not await send(room.host, {"type": "command", "action": data["action"], "id": data["id"]}):
+            now = clock_ms()
+            expiry = data.get("expiresAt")
+            if type(expiry) is not int or not now < expiry <= now + COMMAND_TTL_MS:
+                await send(room.phone, {"type": "result", "id": data["id"], "outcome": "expired"})
+            elif not await send(room.host, {
+                "type": "command", "action": data["action"], "id": data["id"], "expiresAt": expiry,
+            }):
                 await send(room.phone, {"type": "peer", "connected": False})
         return True
 
@@ -192,22 +214,23 @@ class Relay:
         if (len(self.connections) >= MAX_CONNECTIONS or
                 sum(ip == client for ip in self.connections.values()) >= MAX_CONNECTIONS_PER_IP):
             raise web.HTTPServiceUnavailable()
-        socket = web.WebSocketResponse(heartbeat=15, max_msg_size=2048, compress=False)
+        socket = web.WebSocketResponse(timeout=2, heartbeat=15, max_msg_size=2048, compress=False)
         self.connections[socket] = client
         room = role = None
+        replaced = None
         try:
             await socket.prepare(request)
             try:
                 hello = parse_message(await socket.receive(timeout=8))
             except asyncio.TimeoutError:
                 return socket
-            room, role, previous = self.join(socket, hello)
+            room, role, previous = self.join(socket, hello, client)
             if room is None:
                 await send(socket, {"type": "error", "code": previous})
                 await socket.close(code=4003)
                 return socket
             if previous is not None:
-                await previous.close(code=4001, message=b"replaced")
+                replaced = asyncio.create_task(previous.close(code=4001, message=b"replaced", drain=False))
             await self.announce(room, role, socket)
             window = time.monotonic()
             count = 0
@@ -233,6 +256,8 @@ class Relay:
                     await send(room.phone, {"type": "peer", "connected": False})
                 else:
                     await send(room.host, {"type": "peer", "connected": False})
+            if replaced is not None:
+                await asyncio.gather(replaced, return_exceptions=True)
         return socket
 
 

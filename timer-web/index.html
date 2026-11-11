@@ -8,8 +8,8 @@
 <meta name="theme-color" content="#B8860B" />
 <script src="./desktop-install.js" defer></script>
 <script src="./offline-cache.js" defer></script>
-<script src="./remote/connection.js" defer></script>
-<script src="./remote/desktop.js" defer></script>
+<script src="./remote/connection.js?v=2" defer></script>
+<script src="./remote/desktop.js?v=2" defer></script>
 <style>
   :root {
     --bg: #F8F9FA;
@@ -921,6 +921,10 @@
 
   function addMinute() {
     if (state.running && state.endsAt) {
+      if (state.endsAt.getTime() <= Date.now()) {
+        finish();
+        return false;
+      }
       playSound('voice');
       state.endsAt = new Date(state.endsAt.getTime() + minuteMs);
       state.remainingMs = Math.max(state.endsAt.getTime() - Date.now(), 0);
@@ -1176,10 +1180,16 @@
   }
 
   function applyRemoteCommand(action) {
-    if (action === 'start' && !state.running) start();
+    if (action === 'add') return addMinute() !== false;
+    if (state.running && state.endsAt.getTime() <= Date.now()) {
+      finish();
+      return false;
+    }
+    if (action === 'start' && !state.running && totalMs() > 0) start();
     else if (action === 'pause' && state.running) pause();
-    else if (action === 'add') addMinute();
-    else if (action === 'subtract') minusMinute();
+    else if (action === 'subtract' && readRemoteTimer().canSubtract) minusMinute();
+    else return false;
+    return true;
   }
 
   /* ---------- mode toggling ---------- */
@@ -1298,7 +1308,7 @@
   setRingCast($('#castDial'), totalMs(), state.remainingMs);
   render();
   document.addEventListener('DOMContentLoaded', () => {
-    remote = window.setupTimerRemote?.({ readTimer: readRemoteTimer, applyCommand: applyRemoteCommand });
+    remote = window.setupTimerRemote?.({ version: 2, readTimer: readRemoteTimer, applyCommand: applyRemoteCommand });
   });
 })();
 </script>

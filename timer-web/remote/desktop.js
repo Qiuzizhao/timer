@@ -1,6 +1,6 @@
 (() => {
-  window.setupTimerRemote = function ({ readTimer, applyCommand }) {
-    if (!window.isSecureContext || !window.connectTimerRemote || !/^https?:$/.test(location.protocol)) return;
+  window.setupTimerRemote = function ({ version, readTimer, applyCommand }) {
+    if (version !== 2 || !window.isSecureContext || !window.connectTimerRemote || !/^https?:$/.test(location.protocol)) return;
     const button = document.getElementById('remoteToggle');
     const dialog = document.getElementById('remoteDialog');
     const status = document.getElementById('remoteStatus');
@@ -8,7 +8,7 @@
     const qr = document.getElementById('remoteQr');
     const renew = document.getElementById('remoteRenew');
     const endButton = document.getElementById('remoteEnd');
-    const processed = new Set();
+    const processed = new Map();
     let connection;
     let key;
     let paired = false;
@@ -26,14 +26,14 @@
       clearInterval(codeTimer);
     }
 
-    function sync(ack, force = false) {
+    function sync(result, force = false) {
       if (!phoneOnline) return;
       const { deadline, ...state } = readTimer();
       const identity = JSON.stringify([
         state.phase, deadline ?? state.remainingMs, state.durationMs, state.canSubtract
       ]);
-      if (!ack && !force && identity === lastState) return;
-      if (connection.send({ type: 'state', state, ack })) lastState = identity;
+      if (!result && !force && identity === lastState) return;
+      if (connection.send({ type: 'state', state, ...result })) lastState = identity;
     }
 
     function showCode(message) {
@@ -94,17 +94,24 @@
           } else if (message.type === 'peer') {
             setPeer(message.connected);
           } else if (message.type === 'command') {
-            if (!processed.has(message.id)) {
-              processed.add(message.id);
-              if (processed.size > 128) processed.delete(processed.values().next().value);
-              applyCommand(message.action);
+            let outcome = processed.get(message.id);
+            if (!outcome) {
+              const clock = connection.clockBounds();
+              if (!clock || clock.latest >= message.expiresAt) outcome = 'expired';
+              else outcome = applyCommand(message.action) ? 'applied' : 'unchanged';
+              processed.set(message.id, outcome);
+              if (processed.size > 128) processed.delete(processed.keys().next().value);
             }
-            sync(message.id, true);
+            sync({ ack: message.id, outcome });
           }
         },
         disconnected(terminal) {
           if (terminal) {
-            stop(error === 'busy' ? '遥控服务繁忙，请稍后重新生成。' : '遥控已结束，请重新生成二维码。');
+            const notices = {
+              busy: '配对会话已满，请结束暂时不用的遥控会话，或稍后再试。',
+              upgrade: '网页版本已更新，请刷新后再试。',
+            };
+            stop(notices[error] || '遥控已结束，请重新生成二维码。');
             return;
           }
           phoneOnline = false;
