@@ -68,7 +68,8 @@ class RelayTest(unittest.IsolatedAsyncioTestCase):
             await phone.send_json(command)
             self.assertEqual(await host.receive_json(timeout=2), command)
             snapshot = {"type": "state", "state": {
-                "phase": "paused", "remainingMs": 2000, "durationMs": 5000, "canSubtract": True
+                "phase": "paused", "remainingMs": 2000, "durationMs": 5000,
+                "canSubtract": True, "endsAtRelayMs": None,
             }, "ack": command["id"], "outcome": "applied"}
             await host.send_json(snapshot)
             self.assertEqual(await phone.receive_json(timeout=2), snapshot)
@@ -155,6 +156,22 @@ class RelayTest(unittest.IsolatedAsyncioTestCase):
             })
         await host.send_json({"type": "ping"})
         self.assertEqual((await host.receive_json(timeout=2))["type"], "pong")
+
+    async def test_running_state_passes_through_relay_deadline(self):
+        host, _, pairing = await self.host()
+        phone = await self.connect({
+            "type": "pair", "key": pairing,
+            "phoneKey": f"{pairing.split('.')[0]}.{secrets.token_urlsafe(24)}",
+        })
+        await self.ready(phone, host=True)
+        await host.receive_json(timeout=2)
+
+        state = {"phase": "running", "remainingMs": 5000, "durationMs": 5000, "canSubtract": True}
+        await host.send_json({"type": "state", "state": state})
+        state["endsAtRelayMs"] = clock_ms() + 5000
+        snapshot = {"type": "state", "state": state}
+        await host.send_json(snapshot)
+        self.assertEqual(await phone.receive_json(timeout=2), snapshot)
 
     async def test_incompatible_clients_are_asked_to_upgrade(self):
         socket = await self.connect({"type": "create", "version": 1})

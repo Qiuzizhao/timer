@@ -164,11 +164,20 @@
         if (online) showConnection('电脑已连接', feedback);
         render();
       } else if (message.type === 'state') {
+        const now = message.state.phase === 'running' ? connection.relayTime() : null;
+        if (message.state.phase === 'running' && now === null) {
+          connection.reconnect();
+          return;
+        }
         state = message.state;
-        deadline = state.phase === 'running' ? performance.now() + state.remainingMs : undefined;
+        deadline = now === null ? undefined : performance.now() + state.endsAtRelayMs - now;
         receiveResult(message.ack, message.outcome);
         online = true;
         showConnection('电脑已连接', feedback);
+        render();
+      } else if (message.type === 'pong' && online && deadline !== undefined) {
+        const now = connection.relayTime();
+        if (now !== null) deadline = performance.now() + state.endsAtRelayMs - now;
         render();
       }
     },

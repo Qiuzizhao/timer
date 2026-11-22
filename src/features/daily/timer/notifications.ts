@@ -27,9 +27,11 @@ const END_NOTIFICATION_ID = 'timer-end';
  * a single in-app ring. If the app is dead, the notification still fires a
  * moment later as the safety net. Either way there is no double-ding.
  */
-export const END_NOTIFICATION_DELAY_MS = 400;
+const END_NOTIFICATION_DELAY_MS = 400;
 
 let handlerConfigured = false;
+let notificationRevision = 0;
+let notificationQueue = Promise.resolve();
 
 /** Register the foreground notification handler and the Android channel. */
 export function configureNotificationHandling() {
@@ -76,9 +78,7 @@ export async function ensureNotificationPermissions(): Promise<boolean> {
   }
 }
 
-/** Cancel the pending "time's up" notification, if any. */
-export async function cancelEndNotification(): Promise<void> {
-  if (Platform.OS === 'web') return;
+async function cancelScheduledEnd() {
   try {
     await Notifications.cancelScheduledNotificationAsync(END_NOTIFICATION_ID);
   } catch {
@@ -86,26 +86,41 @@ export async function cancelEndNotification(): Promise<void> {
   }
 }
 
-/** Schedule the "time's up" notification to fire at `fireAt`. */
-export async function scheduleEndNotification(fireAt: Date): Promise<void> {
+/** Cancel the pending "time's up" notification, if any. */
+export async function cancelEndNotification(): Promise<void> {
   if (Platform.OS === 'web') return;
-  try {
-    await cancelEndNotification();
-    await Notifications.scheduleNotificationAsync({
-      identifier: END_NOTIFICATION_ID,
-      content: {
-        title: '计时结束',
-        body: '计时器时间到了',
-        sound: 'default',
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: fireAt,
-        channelId: TIMER_CHANNEL_ID,
-      },
-    });
-  } catch {
-    // Scheduling can fail if permission was refused or on some platforms;
-    // the in-app ring still covers the foreground/background-alive case.
-  }
+  ++notificationRevision;
+  notificationQueue = notificationQueue.then(cancelScheduledEnd);
+  await notificationQueue;
+}
+
+/** Schedule the system reminder for the current countdown deadline. */
+export async function scheduleEndNotification(endsAt: Date): Promise<void> {
+  if (Platform.OS === 'web') return;
+  const revision = ++notificationRevision;
+  // Serialize native writes, but let pause/reset cancel while permission is pending.
+  notificationQueue = notificationQueue.then(cancelScheduledEnd);
+  if (!await ensureNotificationPermissions() || revision !== notificationRevision) return;
+
+  notificationQueue = notificationQueue.then(async () => {
+    if (revision !== notificationRevision || Date.now() >= endsAt.getTime()) return;
+    try {
+      await Notifications.scheduleNotificationAsync({
+        identifier: END_NOTIFICATION_ID,
+        content: {
+          title: '计时结束',
+          body: '计时器时间到了',
+          sound: 'default',
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: new Date(endsAt.getTime() + END_NOTIFICATION_DELAY_MS),
+          channelId: TIMER_CHANNEL_ID,
+        },
+      });
+    } catch {
+      // The live timer still handles the alarm if scheduling fails.
+    }
+  });
+  await notificationQueue;
 }

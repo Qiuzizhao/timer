@@ -1,6 +1,6 @@
 (() => {
   window.setupTimerRemote = function ({ version, readTimer, applyCommand }) {
-    if (version !== 2 || !window.isSecureContext || !window.connectTimerRemote || !/^https?:$/.test(location.protocol)) return;
+    if (version !== 3 || !window.isSecureContext || !window.connectTimerRemote || !/^https?:$/.test(location.protocol)) return;
     const button = document.getElementById('remoteToggle');
     const dialog = document.getElementById('remoteDialog');
     const status = document.getElementById('remoteStatus');
@@ -33,6 +33,12 @@
         state.phase, deadline ?? state.remainingMs, state.durationMs, state.canSubtract
       ]);
       if (!result && !force && identity === lastState) return;
+      const now = state.phase === 'running' ? connection.relayTime() : null;
+      if (state.phase === 'running' && now === null) {
+        connection.reconnect();
+        return;
+      }
+      state.endsAtRelayMs = now === null ? null : now + state.remainingMs;
       if (connection.send({ type: 'state', state, ...result })) lastState = identity;
     }
 

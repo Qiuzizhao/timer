@@ -8,8 +8,8 @@
 <meta name="theme-color" content="#B8860B" />
 <script src="./desktop-install.js" defer></script>
 <script src="./offline-cache.js" defer></script>
-<script src="./remote/connection.js?v=2" defer></script>
-<script src="./remote/desktop.js?v=2" defer></script>
+<script src="./remote/connection.js?v=3" defer></script>
+<script src="./remote/desktop.js?v=3" defer></script>
 <style>
   :root {
     --bg: #F8F9FA;
@@ -680,6 +680,8 @@
   const decodedSounds = new Map();
   const mediaSounds = new Map();
   const playingSounds = new Map();
+  const playingTones = new Set();
+  let soundRevision = 0;
   let actx = null;
   let audioReady = null;
 
@@ -736,11 +738,17 @@
     g.gain.linearRampToValueAtTime(vol || 0.3, t + 0.02);
     g.gain.exponentialRampToValueAtTime(0.001, t + (dur || 0.2));
     o.connect(g).connect(c.destination);
+    playingTones.add(o);
+    o.onended = () => {
+      playingTones.delete(o);
+      o.disconnect();
+      g.disconnect();
+    };
     o.start(t);
     o.stop(t + (dur || 0.2) + 0.05);
   }
-  async function synth(cue) {
-    if (!await audioReady || !state.soundEnabled || actx.state !== 'running') return;
+  async function synth(cue, revision = soundRevision) {
+    if (!await audioReady || revision !== soundRevision || !state.soundEnabled || actx.state !== 'running') return;
     if (cue === 'prompt') { tone(880, 0.16, 0, 0.28); tone(1174.6, 0.22, 0.14, 0.28); }
     else if (cue === 'tick') { tone(1500, 0.05, 0, 0.5); }
     else if (cue === 'ring') {
@@ -758,11 +766,12 @@
   }
 
   function playMedia(cue) {
+    const revision = soundRevision;
     try {
       const a = getMedia(cue);
       a.currentTime = 0;
       const p = a.play();
-      if (p) p.catch(() => synth(cue));
+      if (p) p.catch(() => synth(cue, revision));
     } catch {
       synth(cue);
     }
@@ -806,6 +815,9 @@
   }
 
   function stopSounds() {
+    ++soundRevision;
+    for (const tone of playingTones) tone.stop();
+    playingTones.clear();
     for (const playback of playingSounds.values()) playback.source?.stop();
     playingSounds.clear();
     for (const audio of mediaSounds.values()) audio.pause();
@@ -1308,7 +1320,7 @@
   setRingCast($('#castDial'), totalMs(), state.remainingMs);
   render();
   document.addEventListener('DOMContentLoaded', () => {
-    remote = window.setupTimerRemote?.({ version: 2, readTimer: readRemoteTimer, applyCommand: applyRemoteCommand });
+    remote = window.setupTimerRemote?.({ version: 3, readTimer: readRemoteTimer, applyCommand: applyRemoteCommand });
   });
 })();
 </script>

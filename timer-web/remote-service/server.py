@@ -19,7 +19,7 @@ MAX_ROOMS = 128
 MAX_ROOMS_PER_IP = 8
 MAX_CONNECTIONS = MAX_ROOMS * 3
 MAX_CONNECTIONS_PER_IP = 16
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 COMMAND_TTL_MS = 4000
 KEY = re.compile(r"[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]{32,64}")
 COMMAND_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
@@ -188,9 +188,15 @@ class Relay:
                     return True
                 if type(snapshot.get("canSubtract")) is not bool:
                     return True
+                deadline = snapshot.get("endsAtRelayMs")
+                if snapshot["phase"] == "running":
+                    if type(deadline) is not int or not 0 <= deadline <= MAX_TIME_MS:
+                        return True
+                else:
+                    deadline = None
                 message = {"type": "state", "state": {
                     "phase": snapshot["phase"], "remainingMs": times[0],
-                    "durationMs": times[1], "canSubtract": snapshot["canSubtract"],
+                    "durationMs": times[1], "canSubtract": snapshot["canSubtract"], "endsAtRelayMs": deadline,
                 }}
                 if valid_id(data.get("ack")) and data.get("outcome") in OUTCOMES:
                     message["ack"] = data["ack"]

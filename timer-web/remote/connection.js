@@ -1,7 +1,7 @@
 (() => {
   const endpoint = new URL('ws', document.currentScript.src);
   endpoint.protocol = endpoint.protocol === 'https:' ? 'wss:' : 'ws:';
-  const version = 2;
+  const version = 3;
   const heartbeatMs = 10000;
   const responseTimeoutMs = 5000;
   const clockSampleMaxAgeMs = 120000;
@@ -34,6 +34,11 @@
         earliest: Math.floor(sample.clockMs + Math.min(age, wallAge) - drift),
         latest: Math.ceil(sample.clockMs + Math.max(age, wallAge) + sample.receivedAt - sample.sentAt + drift + 1),
       };
+    }
+
+    function relayTime() {
+      const bounds = clockBounds();
+      return bounds ? Math.round((bounds.earliest + bounds.latest) / 2) : null;
     }
 
     function retire() {
@@ -99,7 +104,6 @@
             timeout(responseTimeoutMs);
           }, heartbeatMs);
           delay = 300;
-          if (message.type === 'pong') return;
         }
         receive(message);
       });
@@ -130,6 +134,6 @@
     window.addEventListener('offline', offline);
     if (navigator.onLine) open();
     else offline();
-    return { send, reconnect, clockBounds, close: stop };
+    return { send, reconnect, clockBounds, relayTime, close: stop };
   };
 })();
