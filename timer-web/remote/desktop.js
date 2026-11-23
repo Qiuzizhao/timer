@@ -16,6 +16,7 @@
     let codeTimer;
     let lastState;
     let error;
+    let needsRefresh = false;
 
     function show(text, canRenew = false) {
       status.textContent = text;
@@ -69,7 +70,7 @@
       if (connected) sync(undefined, true);
     }
 
-    function stop(text) {
+    function stop(text, refresh = false) {
       connection?.close();
       connection = null;
       key = null;
@@ -77,6 +78,8 @@
       phoneOnline = false;
       lastState = null;
       error = null;
+      needsRefresh = refresh;
+      renew.textContent = refresh ? '刷新网页' : '重新生成';
       processed.clear();
       button.dataset.connected = 'false';
       endButton.hidden = true;
@@ -117,7 +120,7 @@
               busy: '配对会话已满，请结束暂时不用的遥控会话，或稍后再试。',
               upgrade: '网页版本已更新，请刷新后再试。',
             };
-            stop(notices[error] || '遥控已结束，请重新生成二维码。');
+            stop(notices[error] || '遥控已结束，请重新生成二维码。', error === 'upgrade');
             return;
           }
           phoneOnline = false;
@@ -130,10 +133,11 @@
     button.hidden = false;
     button.addEventListener('click', () => {
       dialog.showModal();
-      if (!connection) connect();
+      if (!connection && !needsRefresh) connect();
     });
     renew.addEventListener('click', () => {
-      if (connection) connection.send({ type: 'renew' });
+      if (needsRefresh) location.reload();
+      else if (connection) connection.send({ type: 'renew' });
       else connect();
     });
     endButton.addEventListener('click', () => {

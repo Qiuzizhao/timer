@@ -1,7 +1,7 @@
 const scope = new URL(self.registration.scope);
 // Cache Storage is shared by every service worker on this origin.
 const CACHE_PREFIX = scope.pathname === '/' ? 'quiet-timer-' : `quiet-timer:${scope.pathname}:`;
-const CACHE_NAME = `${CACHE_PREFIX}v1`;
+const CACHE_NAME = `${CACHE_PREFIX}v2`;
 const ASSETS = [
   './index.html', './desktop-install.js', './offline-cache.js', './manifest.json',
   './icons/timer-192.png', './icons/timer-512.png',
@@ -12,8 +12,12 @@ const INDEX = ASSETS[0];
 
 self.addEventListener('install', event => {
   // Finish downloading the complete offline set before taking control.
-  event.waitUntil(caches.open(CACHE_NAME).then(cache =>
-    cache.addAll(ASSETS.map(url => new Request(url, { cache: 'no-cache' })))));
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(ASSETS.map(url => new Request(url, { cache: 'no-cache' })));
+    // Update future requests without reloading timers already open in other tabs.
+    await self.skipWaiting();
+  })());
 });
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
@@ -65,6 +69,12 @@ self.addEventListener('fetch', event => {
   event.respondWith((async () => {
     const cache = await cachePromise;
     const cached = await cache.match(key);
+    if (key === INDEX && event.request.mode === 'navigate') {
+      // Remote pairing requires the page and relay to speak the same protocol.
+      const online = await fresh.catch(() => null);
+      if (online?.ok) return online;
+      return cached || online || Response.error();
+    }
     const response = cached || await fresh;
     const range = event.request.headers.get('Range');
     return range && response.ok && key.endsWith('.wav') ? audioRange(response, range) : response;
